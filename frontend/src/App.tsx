@@ -27,6 +27,7 @@ import { ActionIconButton } from "./components/ActionIconButton";
 import { ManagementPage } from "./components/ManagementPage";
 import { PaginatedTable, type PaginatedTableColumn } from "./components/PaginatedTable";
 import { SearchableMultiSelect } from "./components/SearchableMultiSelect";
+import { SearchableSelect, type SearchableSelectOption } from "./components/SearchableSelect";
 import { SidebarGroup } from "./components/SidebarGroup";
 import {
   api,
@@ -59,7 +60,7 @@ type View =
   | "system-dashboard"
   | "system-settings"
   | "system-tenant-settings"
-  | "user-register"
+  | "user-onboard"
   | "user-manage"
   | "user-detail"
   | "member-group-create"
@@ -83,8 +84,8 @@ function pageTitleFor(view: View) {
       return "System settings";
     case "system-tenant-settings":
       return "Tenant system settings";
-    case "user-register":
-      return "User register";
+    case "user-onboard":
+      return "Onboard users";
     case "user-manage":
       return "Manage users";
     case "user-detail":
@@ -135,6 +136,18 @@ function tenantRoleLabel(role: AuthUser["role"], tenant?: Tenant | null) {
   return roleLabel(role);
 }
 
+function tenantUserRoleOptions(tenant: Tenant | null, actorRole: AuthUser["role"]): SearchableSelectOption[] {
+  return [
+    { label: `Member / ${tenant?.memberSingular || "Member"}`, value: "tenant_member" },
+    ...(actorRole === "tenant_admin"
+      ? [
+          { label: `Staff / ${tenant?.staffSingular || "Staff"}`, value: "tenant_staff" },
+          { label: "Tenant admin", value: "tenant_admin" }
+        ]
+      : [])
+  ];
+}
+
 function numberValue(value: unknown) {
   return Number(value ?? 0).toLocaleString();
 }
@@ -154,6 +167,18 @@ function normalizeIdentifierInput(value: string) {
 function isEnabled(value: unknown) {
   return value === true || value === 1 || value === "1" || value === "true";
 }
+
+const statusOptions: SearchableSelectOption[] = [
+  { label: "Active", value: "active" },
+  { label: "Inactive", value: "inactive" }
+];
+
+const attendanceStatusOptions: SearchableSelectOption[] = [
+  { label: "Present", value: "present" },
+  { label: "Absent", value: "absent" },
+  { label: "Late", value: "late" },
+  { label: "Excused", value: "excused" }
+];
 
 function confirmSaveChanges() {
   return window.confirm(SAVE_CONFIRMATION_MESSAGE);
@@ -228,6 +253,101 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
           <button className="primary-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="spin" size={18} /> : <LockKeyhole size={18} />}
             Sign in
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function OnboardingPage({ session, onComplete }: { session: Session; onComplete: (session: Session) => void }) {
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState(session.user.email ?? "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!session.user.clientId) return;
+    api
+      .currentTenant(session.token)
+      .then((tenantData) => setTenant(tenantData.tenant))
+      .catch(() => setTenant(null));
+  }, [session.token, session.user.clientId]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    if (!confirmSaveChanges()) return;
+
+    setError("");
+    setIsSaving(true);
+    try {
+      const nextSession = await api.completeOnboarding(session.token, {
+        displayName,
+        email: email.trim() || null,
+        password
+      });
+      localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      onComplete(nextSession);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to complete onboarding");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <main className="login-screen onboarding-screen">
+      <section className="login-brand" aria-label="Account setup">
+        <div className="brand-mark">
+          <UserRound size={28} aria-hidden="true" />
+        </div>
+        <p className="eyebrow">First login</p>
+        <h1>Complete your account setup.</h1>
+        <div className="brand-metrics" aria-label="Setup details">
+          <span><ShieldCheck size={18} /> User ID fixed</span>
+          <span><LockKeyhole size={18} /> New password required</span>
+        </div>
+      </section>
+
+      <section className="login-panel" aria-label="Complete profile">
+        <div>
+          <p className="eyebrow">Account setup</p>
+          <h2>Complete profile</h2>
+        </div>
+
+        {error ? <Alert message={error} /> : null}
+
+        <form onSubmit={handleSubmit} className="login-form">
+          <label>
+            {tenant?.userIdentifierLabel || "User ID"}
+            <input value={session.user.userIdentifier || session.user.newUserIdentifier || ""} readOnly />
+          </label>
+          <label>
+            Display name
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+          </label>
+          <label>
+            Email optional
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+          <label>
+            New password
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
+          </label>
+          <label>
+            Confirm password
+            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
+          </label>
+          <button className="primary-button" type="submit" disabled={isSaving || password !== confirmPassword}>
+            {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
+            Finish setup
           </button>
         </form>
       </section>
@@ -337,7 +457,7 @@ function TenantAdminDashboard({
         </div>
         <div className="action-list">
           <button type="button" onClick={onCreateUser}>
-            <Plus size={18} /> Create user
+            <Plus size={18} /> Onboard user
           </button>
           <button type="button" onClick={onOpenUsers}>
             <UsersRound size={18} /> Manage users
@@ -823,12 +943,12 @@ function ManageTenants({ token }: { token: string }) {
                 <label>Member group label<input value={editForm.memberGroupSingular} onChange={(event) => setEditForm({ ...editForm, memberGroupSingular: event.target.value })} required /></label>
                 <label>Member group plural label<input value={editForm.memberGroupPlural} onChange={(event) => setEditForm({ ...editForm, memberGroupPlural: event.target.value })} required /></label>
               </div>
-              <label>Status
-                <select value={editForm.status} onChange={(event) => setEditForm({ ...editForm, status: event.target.value as Tenant["status"] })}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
+              <SearchableSelect
+                label="Status"
+                value={editForm.status}
+                onChange={(value) => setEditForm({ ...editForm, status: value as Tenant["status"] })}
+                options={statusOptions}
+              />
               <button className="primary-button fit" type="submit" disabled={isSaving}>
                 {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
                 Save tenant
@@ -994,13 +1114,12 @@ function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: 
                 System name
                 <input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <label>
-                Status
-                <select value={status} onChange={(event) => setStatus(event.target.value as "active" | "inactive")}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
+              <SearchableSelect
+                label="Status"
+                value={status}
+                onChange={(value) => setStatus(value as "active" | "inactive")}
+                options={statusOptions}
+              />
             </div>
             <label>
               Description
@@ -1008,15 +1127,12 @@ function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: 
             </label>
             {systemCode === "attendance" ? (
               <div className="form-row">
-                <label>
-                  Default attendance status
-                  <select value={defaultAttendanceStatus} onChange={(event) => setDefaultAttendanceStatus(event.target.value as AttendanceStatus)}>
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="late">Late</option>
-                    <option value="excused">Excused</option>
-                  </select>
-                </label>
+                <SearchableSelect
+                  label="Default attendance status"
+                  value={defaultAttendanceStatus}
+                  onChange={(value) => setDefaultAttendanceStatus(value as AttendanceStatus)}
+                  options={attendanceStatusOptions}
+                />
                 <label className="toggle-row">
                   <span>
                     <strong>Notes enabled</strong>
@@ -1177,55 +1293,69 @@ function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; t
 
 type UserRole = "tenant_admin" | "tenant_staff" | "tenant_member";
 
-function UserRegister({ token, actorRole }: { token: string; actorRole: AuthUser["role"] }) {
+function parseBulkUserIdentifiers(value: string) {
+  return value
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function UserOnboarding({ token, actorRole }: { token: string; actorRole: AuthUser["role"] }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
+  const [groups, setGroups] = useState<MemberGroup[]>([]);
+  const [mode, setMode] = useState<"single" | "bulk">("single");
   const [userIdentifier, setUserIdentifier] = useState("");
-  const [newUserIdentifier, setNewUserIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const [bulkUserIdentifiers, setBulkUserIdentifiers] = useState("");
   const [role, setRole] = useState<UserRole>("tenant_member");
-  const [error, setError] = useState("");
+  const [memberGroupId, setMemberGroupId] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [bulkErrors, setBulkErrors] = useState<Array<{ row: number; userIdentifier: string; message: string }>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    api
-      .currentTenant(token)
-      .then((tenantData) => setTenant(tenantData.tenant))
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load tenant labels"));
+    Promise.all([api.currentTenant(token), api.memberGroups(token)])
+      .then(([tenantData, groupsData]) => {
+        setTenant(tenantData.tenant);
+        setGroups(groupsData.groups.filter((group) => group.status === "active"));
+      })
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load onboarding form"));
   }, [token]);
+
+  const pastedCount = parseBulkUserIdentifiers(bulkUserIdentifiers).length;
+  const idLabel = tenant?.userIdentifierLabel || "User ID";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setMessage("");
+    setBulkErrors([]);
     setIsSubmitting(true);
 
     try {
-      await api.createPerson(token, {
-        displayName,
-        email,
-        userIdentifier: userIdentifier || undefined,
-        newUserIdentifier: newUserIdentifier || undefined,
-        password,
-        role
-      });
-      setDisplayName("");
-      setEmail("");
-      setUserIdentifier("");
-      setNewUserIdentifier("");
-      setPassword("");
-      setRole("tenant_member");
-      setMessage(
-        role === "tenant_admin"
-          ? "Tenant admin created"
-          : role === "tenant_staff"
-            ? `${tenant?.staffSingular || "Staff"} account created`
-            : `${tenant?.memberSingular || "Member"} account created`
-      );
+      const payload = {
+        role,
+        ...(role === "tenant_member" && memberGroupId ? { memberGroupId: Number(memberGroupId) } : {})
+      };
+
+      if (mode === "single") {
+        await api.onboardPerson(token, {
+          ...payload,
+          userIdentifier: userIdentifier || ""
+        });
+        setMessage(`${idLabel} ${userIdentifier} onboarded. Temporary password is the ${idLabel}.`);
+        setUserIdentifier("");
+      } else {
+        const result = await api.bulkOnboardPeople(token, {
+          ...payload,
+          userIdentifiers: bulkUserIdentifiers
+        });
+        setMessage(`Created ${result.created} user${result.created === 1 ? "" : "s"}${result.skipped ? `, skipped ${result.skipped}` : ""}.`);
+        setBulkErrors(result.errors);
+        if (result.created > 0) setBulkUserIdentifiers("");
+      }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to create user");
+      setError(submitError instanceof Error ? submitError.message : "Unable to onboard users");
     } finally {
       setIsSubmitting(false);
     }
@@ -1236,57 +1366,93 @@ function UserRegister({ token, actorRole }: { token: string; actorRole: AuthUser
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Tenant users</p>
-            <h2>
-              {actorRole === "tenant_staff"
-                ? `Create member / ${tenant?.memberSingular || "member"}`
-                : `Create member / ${tenant?.memberSingular || "member"}, staff / ${tenant?.staffSingular || "staff"}, or admin`}
-            </h2>
+            <p className="eyebrow">User onboarding</p>
+            <h2>Onboard users by {idLabel}</h2>
           </div>
         </div>
         {message ? <Alert tone="success" message={message} /> : null}
         {error ? <Alert message={error} /> : null}
+
+        <div className="segmented-choice" role="tablist" aria-label="Onboarding mode">
+          <button className={mode === "single" ? "active" : ""} type="button" onClick={() => setMode("single")}>
+            Single
+            <span>One {idLabel}</span>
+          </button>
+          <button className={mode === "bulk" ? "active" : ""} type="button" onClick={() => setMode("bulk")}>
+            Bulk
+            <span>Paste up to 1000</span>
+          </button>
+        </div>
+
         <form className="stack-form" onSubmit={handleSubmit}>
-          <label>
-            Name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-          </label>
+          {mode === "single" ? (
+            <label>
+              <RequiredLabel>{idLabel}</RequiredLabel>
+              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} required />
+            </label>
+          ) : (
+            <label>
+              <RequiredLabel>{idLabel}s</RequiredLabel>
+              <textarea
+                value={bulkUserIdentifiers}
+                onChange={(event) => setBulkUserIdentifiers(normalizeIdentifierInput(event.target.value))}
+                placeholder={`01354\nLOC/00123, OC/00350\n12345 AW/01012`}
+                rows={8}
+                required
+              />
+              <small>{pastedCount > 0 ? `${pastedCount} ${idLabel}${pastedCount === 1 ? "" : "s"} ready.` : `Pasted users use their ${idLabel} as the temporary password.`} Limit 1000.</small>
+            </label>
+          )}
+
           <div className="form-row">
-            <label>
-              {tenant?.userIdentifierLabel || "User ID"}
-              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
-            <label>
-              {tenant?.newUserIdentifierLabel || "New User ID"}
-              <input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
+            <SearchableSelect
+              label="Role"
+              value={role}
+              onChange={(value) => {
+                const nextRole = value as UserRole;
+                setRole(nextRole);
+                if (nextRole !== "tenant_member") setMemberGroupId("");
+              }}
+              options={tenantUserRoleOptions(tenant, actorRole)}
+            />
+            {role === "tenant_member" ? (
+              <SearchableSelect
+                label={tenant?.memberGroupSingular || "Class"}
+                value={memberGroupId}
+                onChange={setMemberGroupId}
+                options={[
+                  { label: `No ${tenant?.memberGroupSingular?.toLowerCase() || "class"}`, value: "" },
+                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
+                ]}
+              />
+            ) : null}
           </div>
-          <label>
-            Email
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-          <label>
-            Temporary password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
-          </label>
-          <label>
-            Role
-            <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
-              <option value="tenant_member">Member / {tenant?.memberSingular || "Member"}</option>
-              {actorRole === "tenant_admin" ? (
-                <>
-                  <option value="tenant_staff">Staff / {tenant?.staffSingular || "Staff"}</option>
-                  <option value="tenant_admin">Tenant admin</option>
-                </>
-              ) : null}
-            </select>
-          </label>
-          <button className="primary-button fit" type="submit" disabled={isSubmitting}>
+
+          <div className="info-callout">
+            Temporary password is the {idLabel}. First login requires profile setup.
+          </div>
+
+          <button className="primary-button fit" type="submit" disabled={isSubmitting || (mode === "bulk" && pastedCount > 1000)}>
             {isSubmitting ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-            Create account
+            {mode === "single" ? "Onboard user" : "Bulk onboard users"}
           </button>
         </form>
       </section>
+
+      {bulkErrors.length > 0 ? (
+        <ManagementPage eyebrow="Import results" title="Skipped rows">
+          <PaginatedTable
+            columns={[
+              { header: "Row", render: (item) => item.row },
+              { header: idLabel, render: (item) => item.userIdentifier },
+              { header: "Reason", render: (item) => item.message }
+            ]}
+            emptyMessage="No skipped rows."
+            getRowKey={(item) => `${item.row}-${item.userIdentifier}`}
+            rows={bulkErrors}
+          />
+        </ManagementPage>
+      ) : null}
     </div>
   );
 }
@@ -1370,17 +1536,15 @@ function ManageUsers({
         {!isLoading ? (
           <>
             <div className="management-filter-bar">
-              <label className="inline-filter">
-                {tenant?.memberGroupSingular || "Class"}
-                <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)}>
-                  <option value="">All users</option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SearchableSelect
+                label={tenant?.memberGroupSingular || "Class"}
+                value={selectedGroupId}
+                onChange={setSelectedGroupId}
+                options={[
+                  { label: "All users", value: "" },
+                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
+                ]}
+              />
             </div>
             <PaginatedTable columns={userColumns} emptyMessage="No users found." getRowKey={(person) => person.id} rows={filteredPeople} />
           </>
@@ -1582,7 +1746,7 @@ function MemberGroupDetailsPage({
   const memberOptions = members.map((member) => ({
     id: member.id,
     label: member.displayName,
-    meta: member.userIdentifier || member.email
+    meta: member.userIdentifier || member.email || undefined
   }));
 
   return (
@@ -1607,13 +1771,12 @@ function MemberGroupDetailsPage({
                 <RequiredLabel>{tenant?.memberGroupSingular || "Class"} name</RequiredLabel>
                 <input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <label>
-                Status
-                <select value={status} onChange={(event) => setStatus(event.target.value as "active" | "inactive")}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
+              <SearchableSelect
+                label="Status"
+                value={status}
+                onChange={(value) => setStatus(value as "active" | "inactive")}
+                options={statusOptions}
+              />
             </div>
             <label>
               Description
@@ -1668,7 +1831,7 @@ function UserDetailsPage({
         const person = peopleData.people.find((item) => item.id === userId);
         if (!person) throw new Error("User not found");
         setDisplayName(person.displayName);
-        setEmail(person.email);
+        setEmail(person.email ?? "");
         setUserIdentifier(person.userIdentifier ?? "");
         setNewUserIdentifier(person.newUserIdentifier ?? "");
         setRole(person.role);
@@ -1752,25 +1915,18 @@ function UserDetailsPage({
               <label>{tenant?.newUserIdentifierLabel || "New User ID"}<input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
             </div>
             <div className="form-row">
-              <label>
-                Role
-                <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
-                  <option value="tenant_member">Member / {tenant?.memberSingular || "Member"}</option>
-                  {actorRole === "tenant_admin" ? (
-                    <>
-                      <option value="tenant_staff">Staff / {tenant?.staffSingular || "Staff"}</option>
-                      <option value="tenant_admin">Tenant admin</option>
-                    </>
-                  ) : null}
-                </select>
-              </label>
-              <label>
-                Status
-                <select value={status} onChange={(event) => setStatus(event.target.value as "active" | "inactive")}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
+              <SearchableSelect
+                label="Role"
+                value={role}
+                onChange={(value) => setRole(value as UserRole)}
+                options={tenantUserRoleOptions(tenant, actorRole)}
+              />
+              <SearchableSelect
+                label="Status"
+                value={status}
+                onChange={(value) => setStatus(value as "active" | "inactive")}
+                options={statusOptions}
+              />
             </div>
             <label>New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} /></label>
             <div className="form-actions">
@@ -1938,17 +2094,17 @@ function RecordAttendancePage({ audience, token }: { audience: AttendanceAudienc
                 />
               </div>
               {audience === "member" ? (
-                <label className="attendance-group-filter">
-                  {groupLabel}
-                  <select value={selectedGroupId} onChange={(event) => handleGroupSelection(event.target.value)}>
-                    <option value="">Select {groupLabel.toLowerCase()}</option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="attendance-group-filter">
+                  <SearchableSelect
+                    label={groupLabel}
+                    value={selectedGroupId}
+                    onChange={handleGroupSelection}
+                    options={[
+                      { label: `Select ${groupLabel.toLowerCase()}`, value: "" },
+                      ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
+                    ]}
+                  />
+                </div>
               ) : null}
             </div>
             <div className="attendance-record-grid">
@@ -2036,17 +2192,15 @@ function DailyAttendancePage({ audience, token }: { audience: AttendanceAudience
           </div>
           <div className="panel-header-actions">
             {audience === "member" ? (
-              <label className="inline-filter">
-                {tenant?.memberGroupSingular || "Class"}
-                <select value={selectedGroupId} onChange={(event) => setSelectedGroupId(event.target.value)}>
-                  <option value="">All {pluralLabel}</option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SearchableSelect
+                label={tenant?.memberGroupSingular || "Class"}
+                value={selectedGroupId}
+                onChange={setSelectedGroupId}
+                options={[
+                  { label: `All ${pluralLabel}`, value: "" },
+                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
+                ]}
+              />
             ) : null}
             <label className="inline-filter attendance-date-filter">
               Date
@@ -2077,7 +2231,7 @@ function DailyAttendancePage({ audience, token }: { audience: AttendanceAudience
 function ProfilePage({ session, onSessionChange }: { session: Session; onSessionChange: (session: Session) => void }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [displayName, setDisplayName] = useState(session.user.displayName);
-  const [email, setEmail] = useState(session.user.email);
+  const [email, setEmail] = useState(session.user.email ?? "");
   const [userIdentifier, setUserIdentifier] = useState(session.user.userIdentifier ?? "");
   const [newUserIdentifier, setNewUserIdentifier] = useState(session.user.newUserIdentifier ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -2412,7 +2566,7 @@ function DashboardPage({
               <SidebarGroup
                 icon={<UsersRound size={18} />}
                 isActive={
-                  view === "user-register" ||
+                  view === "user-onboard" ||
                   view === "user-manage" ||
                   view === "user-detail" ||
                   view === "member-group-create" ||
@@ -2422,10 +2576,10 @@ function DashboardPage({
                 label="Users"
                 items={[
                   {
-                    active: view === "user-register",
-                    icon: <Plus size={18} />,
-                    label: "User Register",
-                    onClick: () => navigateTo("user-register")
+                    active: view === "user-onboard",
+                    icon: <UserRound size={18} />,
+                    label: "Onboard Users",
+                    onClick: () => navigateTo("user-onboard")
                   },
                   {
                     active: view === "user-manage" || view === "user-detail",
@@ -2475,7 +2629,7 @@ function DashboardPage({
             </div>
             <div>
               <strong>{session.user.displayName}</strong>
-              <span>{session.user.email}</span>
+              <span>{session.user.email || session.user.userIdentifier || ""}</span>
             </div>
             <button className="icon-button" type="button" onClick={handleLogoutClick} aria-label="Sign out" title="Sign out">
               <LogOut size={18} />
@@ -2498,7 +2652,7 @@ function DashboardPage({
           <TenantAdminDashboard
             dashboard={dashboard}
             onOpenUsers={() => navigateTo("user-manage")}
-            onCreateUser={() => navigateTo("user-register")}
+            onCreateUser={() => navigateTo("user-onboard")}
             onOpenAttendance={defaultAttendanceView ? () => navigateTo(defaultAttendanceView) : null}
           />
         ) : null}
@@ -2524,8 +2678,8 @@ function DashboardPage({
         {view === "system-tenant-settings" && session.user.role === "super_admin" ? (
           <TenantSystemSettingsPage systemCode={selectedSystemCode} token={session.token} />
         ) : null}
-        {view === "user-register" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <UserRegister token={session.token} actorRole={session.user.role} />
+        {view === "user-onboard" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
+          <UserOnboarding token={session.token} actorRole={session.user.role} />
         ) : null}
         {view === "user-manage" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
           <ManageUsers
@@ -2582,6 +2736,7 @@ export default function App() {
   }
 
   if (!session) return <LoginPage onLogin={setSession} />;
+  if (session.user.requiresOnboarding) return <OnboardingPage session={session} onComplete={setSession} />;
 
   return <DashboardPage session={session} onLogout={handleLogout} onSessionChange={setSession} />;
 }

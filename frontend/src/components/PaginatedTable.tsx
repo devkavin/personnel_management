@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Search, X } from "lucide-react";
+import { SearchableSelect } from "./SearchableSelect";
 
 export interface PaginatedTableColumn<T> {
   className?: string;
@@ -102,16 +103,12 @@ export function PaginatedTable<T>({
           </div>
         ) : null}
         <div className="table-toolbar-actions">
-          <label className="inline-filter">
-            Rows
-            <select value={pageSize} onChange={(event) => handlePageSizeChange(Number(event.target.value))}>
-              {pageSizeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SearchableSelect
+            label="Rows"
+            value={String(pageSize)}
+            onChange={(value) => handlePageSizeChange(Number(value))}
+            options={pageSizeOptions.map((option) => ({ label: String(option), value: String(option) }))}
+          />
         </div>
       </div>
       <div className="table-wrap">

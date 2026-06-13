@@ -8,12 +8,13 @@ import { assertRole } from "../shared/policies.js";
 interface TokenPayload {
   sub: number;
   clientId: number | null;
-  email: string;
+  email: string | null;
   displayName: string;
   userIdentifier: string | null;
   newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
+  requiresOnboarding: boolean;
 }
 
 export function signUserToken(user: AuthUser) {
@@ -30,7 +31,8 @@ export function signUserToken(user: AuthUser) {
       userIdentifier: user.userIdentifier,
       newUserIdentifier: user.newUserIdentifier,
       role: user.role,
-      status: user.status
+      status: user.status,
+      requiresOnboarding: user.requiresOnboarding
     },
     env.JWT_SECRET,
     options
@@ -53,7 +55,8 @@ export function requireAuth(request: Request, _response: Response, next: NextFun
       userIdentifier: payload.userIdentifier,
       newUserIdentifier: payload.newUserIdentifier,
       role: payload.role,
-      status: payload.status
+      status: payload.status,
+      requiresOnboarding: Boolean(payload.requiresOnboarding)
     };
     return next();
   } catch (error) {

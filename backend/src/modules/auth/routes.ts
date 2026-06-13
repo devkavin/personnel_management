@@ -31,7 +31,8 @@ function mapUser(row: any): AuthUser {
     userIdentifier: row.user_identifier,
     newUserIdentifier: row.new_user_identifier,
     role: row.role,
-    status: row.status
+    status: row.status,
+    requiresOnboarding: Boolean(row.requires_onboarding)
   };
 }
 

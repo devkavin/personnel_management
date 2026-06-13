@@ -14,7 +14,8 @@ describe("auth token", () => {
       userIdentifier: "SVC/001",
       newUserIdentifier: null,
       role: "tenant_admin",
-      status: "active"
+      status: "active",
+      requiresOnboarding: false
     };
 
     const token = signUserToken(user);

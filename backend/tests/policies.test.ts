@@ -11,7 +11,8 @@ const superAdmin: AuthUser = {
   userIdentifier: null,
   newUserIdentifier: null,
   role: "super_admin",
-  status: "active"
+  status: "active",
+  requiresOnboarding: false
 };
 
 const clientAdmin: AuthUser = {
@@ -22,7 +23,8 @@ const clientAdmin: AuthUser = {
   userIdentifier: "ADM/001",
   newUserIdentifier: null,
   role: "tenant_admin",
-  status: "active"
+  status: "active",
+  requiresOnboarding: false
 };
 
 describe("tenant policies", () => {

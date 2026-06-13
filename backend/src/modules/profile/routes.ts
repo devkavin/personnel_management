@@ -11,7 +11,7 @@ const router = Router();
 
 const profileSchema = z.object({
   displayName: z.string().min(2).optional(),
-  email: z.string().email().optional(),
+  email: z.string().email().nullable().optional(),
   userIdentifier: z.string().nullable().optional(),
   newUserIdentifier: z.string().nullable().optional()
 });
@@ -19,6 +19,12 @@ const profileSchema = z.object({
 const passwordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8)
+});
+
+const onboardingSchema = z.object({
+  displayName: z.string().min(2),
+  email: z.string().email().nullable().optional(),
+  password: z.string().min(8)
 });
 
 function mapUser(row: any): AuthUser {
@@ -30,7 +36,8 @@ function mapUser(row: any): AuthUser {
     userIdentifier: row.user_identifier,
     newUserIdentifier: row.new_user_identifier,
     role: row.role,
-    status: row.status
+    status: row.status,
+    requiresOnboarding: Boolean(row.requires_onboarding)
   };
 }
 
@@ -91,6 +98,38 @@ router.patch(
         email: body.email ?? null,
         userIdentifier,
         newUserIdentifier
+      }
+    );
+
+    const [rows] = await pool.query("SELECT * FROM users WHERE id = :id LIMIT 1", { id: request.user!.id });
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    if (!row) throw new AppError(404, "User not found");
+
+    const user = mapUser(row);
+    response.json({ user, token: signUserToken(user) });
+  })
+);
+
+router.patch(
+  "/onboarding",
+  asyncHandler(async (request, response) => {
+    const body = validate(onboardingSchema, request.body);
+    const passwordHash = await bcrypt.hash(body.password, 12);
+
+    await pool.query(
+      `
+        UPDATE users
+        SET display_name = :displayName,
+            email = :email,
+            password_hash = :passwordHash,
+            requires_onboarding = FALSE
+        WHERE id = :id
+      `,
+      {
+        id: request.user!.id,
+        displayName: body.displayName,
+        email: body.email ?? null,
+        passwordHash
       }
     );
 

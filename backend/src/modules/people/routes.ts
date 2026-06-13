@@ -20,6 +20,20 @@ const createPersonSchema = z.object({
   role: z.enum(["tenant_admin", "tenant_staff", "tenant_member"]).default("tenant_member")
 });
 
+const onboardPersonSchema = z.object({
+  clientId: z.coerce.number().optional(),
+  userIdentifier: z.string().min(1),
+  role: z.enum(["tenant_admin", "tenant_staff", "tenant_member"]).default("tenant_member"),
+  memberGroupId: z.coerce.number().optional()
+});
+
+const bulkOnboardSchema = z.object({
+  clientId: z.coerce.number().optional(),
+  userIdentifiers: z.string().min(1),
+  role: z.enum(["tenant_admin", "tenant_staff", "tenant_member"]).default("tenant_member"),
+  memberGroupId: z.coerce.number().optional()
+});
+
 const updatePersonSchema = z.object({
   displayName: z.string().min(2).optional(),
   email: z.string().email().optional(),
@@ -59,6 +73,74 @@ async function assertUniqueUserIdentifiers(_clientId: number, identifiers: Array
   if (Array.isArray(rows) && rows.length > 0) throw new AppError(409, "User ID already exists");
 }
 
+function parseBulkUserIdentifiers(value: string) {
+  return value
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function assertMemberGroup(clientId: number, memberGroupId?: number) {
+  if (!memberGroupId) return;
+  const [rows] = await pool.query(
+    "SELECT id FROM member_groups WHERE id = :memberGroupId AND client_id = :clientId AND status = 'active' LIMIT 1",
+    { clientId, memberGroupId }
+  );
+  if (!Array.isArray(rows) || rows.length === 0) throw new AppError(422, "Selected group was not found for this tenant");
+}
+
+async function assignMemberToGroup(memberGroupId: number | undefined, userId: number, clientId: number, role: Role) {
+  if (!memberGroupId) return;
+  if (role !== "tenant_member") throw new AppError(422, "Groups can only be assigned to members");
+  await assertMemberGroup(clientId, memberGroupId);
+  await pool.query(
+    `
+      INSERT IGNORE INTO member_group_members (member_group_id, user_id)
+      VALUES (:memberGroupId, :userId)
+    `,
+    { memberGroupId, userId }
+  );
+}
+
+async function createOnboardedPerson(clientId: number, userIdentifier: string, role: Role, memberGroupId?: number) {
+  await assertUniqueUserIdentifiers(clientId, [userIdentifier]);
+  const passwordHash = await bcrypt.hash(userIdentifier, 12);
+  const [result] = await pool.query(
+    `
+      INSERT INTO users (
+        client_id,
+        display_name,
+        email,
+        user_identifier,
+        password_hash,
+        role,
+        status,
+        requires_onboarding
+      )
+      VALUES (
+        :clientId,
+        :displayName,
+        NULL,
+        :userIdentifier,
+        :passwordHash,
+        :role,
+        'active',
+        TRUE
+      )
+    `,
+    {
+      clientId,
+      displayName: userIdentifier,
+      userIdentifier,
+      passwordHash,
+      role
+    }
+  );
+  const userId = (result as any).insertId;
+  await assignMemberToGroup(memberGroupId, userId, clientId, role);
+  return userId;
+}
+
 router.use(requireAuth, requireRoles("super_admin", "tenant_admin", "tenant_staff"));
 
 router.get(
@@ -76,6 +158,7 @@ router.get(
           new_user_identifier AS newUserIdentifier,
           role,
           status,
+          requires_onboarding AS requiresOnboarding,
           created_at AS createdAt
         FROM users
         WHERE client_id = :clientId
@@ -84,6 +167,79 @@ router.get(
       { clientId }
     );
     response.json({ people });
+  })
+);
+
+router.post(
+  "/onboard",
+  asyncHandler(async (request, response) => {
+    const body = validate(onboardPersonSchema, request.body);
+    const clientId = requireTenantScope(request.user!, body.clientId);
+    const role = body.role ?? "tenant_member";
+    assertCanManageRole(request.user!.role, role);
+    const userIdentifier = assertValidUserIdentifier(body.userIdentifier);
+    if (!userIdentifier) throw new AppError(422, "User ID is required");
+    if (body.memberGroupId && role !== "tenant_member") throw new AppError(422, "Groups can only be assigned to members");
+    if (body.memberGroupId) await assertMemberGroup(clientId, body.memberGroupId);
+
+    const id = await createOnboardedPerson(clientId, userIdentifier, role, body.memberGroupId);
+    response.status(201).json({
+      id,
+      clientId,
+      displayName: userIdentifier,
+      email: null,
+      userIdentifier,
+      newUserIdentifier: null,
+      role,
+      status: "active",
+      requiresOnboarding: true
+    });
+  })
+);
+
+router.post(
+  "/onboard/bulk",
+  asyncHandler(async (request, response) => {
+    const body = validate(bulkOnboardSchema, request.body);
+    const clientId = requireTenantScope(request.user!, body.clientId);
+    const role = body.role ?? "tenant_member";
+    assertCanManageRole(request.user!.role, role);
+    if (body.memberGroupId && role !== "tenant_member") throw new AppError(422, "Groups can only be assigned to members");
+    if (body.memberGroupId) await assertMemberGroup(clientId, body.memberGroupId);
+
+    const rawIdentifiers = parseBulkUserIdentifiers(body.userIdentifiers);
+    if (rawIdentifiers.length === 0) throw new AppError(422, "Enter at least one User ID");
+    if (rawIdentifiers.length > 1000) throw new AppError(422, "Bulk onboarding supports up to 1000 users at a time");
+
+    let created = 0;
+    let skipped = 0;
+    const errors: Array<{ row: number; userIdentifier: string; message: string }> = [];
+    const seen = new Set<string>();
+
+    for (const [index, rawIdentifier] of rawIdentifiers.entries()) {
+      const row = index + 1;
+      try {
+        const userIdentifier = assertValidUserIdentifier(rawIdentifier);
+        if (!userIdentifier) throw new AppError(422, "User ID is required");
+        if (seen.has(userIdentifier)) {
+          skipped += 1;
+          errors.push({ row, userIdentifier, message: "Duplicate User ID in import" });
+          continue;
+        }
+        seen.add(userIdentifier);
+        await createOnboardedPerson(clientId, userIdentifier, role, body.memberGroupId);
+        created += 1;
+      } catch (error) {
+        skipped += 1;
+        errors.push({
+          row,
+          userIdentifier: rawIdentifier,
+          message: error instanceof Error ? error.message : "Unable to onboard user"
+        });
+      }
+    }
+
+    response.status(201).json({ created, skipped, errors });
   })
 );
 
@@ -112,7 +268,9 @@ router.post(
       email: body.email,
       userIdentifier,
       newUserIdentifier,
-      role
+      role,
+      status: "active",
+      requiresOnboarding: false
     });
   })
 );

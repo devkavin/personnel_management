@@ -3,12 +3,13 @@ export type Role = "super_admin" | "tenant_admin" | "tenant_staff" | "tenant_mem
 export interface AuthUser {
   id: number;
   clientId: number | null;
-  email: string;
+  email: string | null;
   displayName: string;
   userIdentifier: string | null;
   newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
+  requiresOnboarding: boolean;
 }
 
 export interface LoginResponse {
@@ -105,11 +106,12 @@ export interface Person {
   id: number;
   clientId: number;
   displayName: string;
-  email: string;
+  email: string | null;
   userIdentifier: string | null;
   newUserIdentifier: string | null;
   role: "tenant_admin" | "tenant_staff" | "tenant_member";
   status: "active" | "inactive";
+  requiresOnboarding: boolean;
   createdAt?: string;
 }
 
@@ -379,6 +381,43 @@ export const api = {
     });
   },
 
+  onboardPerson(
+    token: string,
+    payload: {
+      userIdentifier: string;
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
+      memberGroupId?: number;
+    }
+  ) {
+    return request<Person>("/people/onboard", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  bulkOnboardPeople(
+    token: string,
+    payload: {
+      userIdentifiers: string;
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
+      memberGroupId?: number;
+    }
+  ) {
+    return request<{ created: number; skipped: number; errors: Array<{ row: number; userIdentifier: string; message: string }> }>(
+      "/people/onboard/bulk",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+  },
+
   updatePerson(
     token: string,
     id: number,
@@ -498,8 +537,18 @@ export const api = {
     });
   },
 
-  updateProfile(token: string, payload: { displayName: string; email: string; userIdentifier?: string | null; newUserIdentifier?: string | null }) {
+  updateProfile(token: string, payload: { displayName: string; email: string | null; userIdentifier?: string | null; newUserIdentifier?: string | null }) {
     return request<LoginResponse>("/profile", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  completeOnboarding(token: string, payload: { displayName: string; email?: string | null; password: string }) {
+    return request<LoginResponse>("/profile/onboarding", {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`

@@ -5,10 +5,11 @@ export type AttendanceStatus = "present" | "absent" | "late" | "excused";
 export interface AuthUser {
   id: number;
   clientId: number | null;
-  email: string;
+  email: string | null;
   displayName: string;
   userIdentifier: string | null;
   newUserIdentifier: string | null;
   role: Role;
   status: UserStatus;
+  requiresOnboarding: boolean;
 }
