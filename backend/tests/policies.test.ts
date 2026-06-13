@@ -8,6 +8,8 @@ const superAdmin: AuthUser = {
   clientId: null,
   displayName: "System Admin",
   email: "admin@example.com",
+  userIdentifier: null,
+  newUserIdentifier: null,
   role: "super_admin",
   status: "active"
 };
@@ -17,7 +19,9 @@ const clientAdmin: AuthUser = {
   clientId: 10,
   displayName: "Client Admin",
   email: "client@example.com",
-  role: "client_admin",
+  userIdentifier: "ADM/001",
+  newUserIdentifier: null,
+  role: "tenant_admin",
   status: "active"
 };
 

@@ -4,13 +4,16 @@ import { z } from "zod";
 import { pool } from "../../database/pool.js";
 import { requireAuth, signUserToken } from "../../middleware/auth.js";
 import { AppError, asyncHandler, validate } from "../../shared/http.js";
+import { assertValidUserIdentifier } from "../../shared/identifiers.js";
 import type { AuthUser } from "../../shared/types.js";
 
 const router = Router();
 
 const profileSchema = z.object({
   displayName: z.string().min(2).optional(),
-  email: z.string().email().optional()
+  email: z.string().email().optional(),
+  userIdentifier: z.string().nullable().optional(),
+  newUserIdentifier: z.string().nullable().optional()
 });
 
 const passwordSchema = z.object({
@@ -24,6 +27,8 @@ function mapUser(row: any): AuthUser {
     clientId: row.client_id === null ? null : Number(row.client_id),
     displayName: row.display_name,
     email: row.email,
+    userIdentifier: row.user_identifier,
+    newUserIdentifier: row.new_user_identifier,
     role: row.role,
     status: row.status
   };
@@ -42,17 +47,50 @@ router.patch(
   "/",
   asyncHandler(async (request, response) => {
     const body = validate(profileSchema, request.body);
+    const [currentRows] = await pool.query("SELECT user_identifier, new_user_identifier FROM users WHERE id = :id LIMIT 1", { id: request.user!.id });
+    const current = Array.isArray(currentRows)
+      ? (currentRows[0] as { user_identifier: string | null; new_user_identifier: string | null } | undefined)
+      : undefined;
+    if (!current) throw new AppError(404, "User not found");
+
+    const userIdentifier = body.userIdentifier === undefined ? current.user_identifier : assertValidUserIdentifier(body.userIdentifier);
+    const newUserIdentifier = body.newUserIdentifier === undefined ? current.new_user_identifier : assertValidUserIdentifier(body.newUserIdentifier);
+    const identifiers = [userIdentifier, newUserIdentifier].filter((value): value is string => Boolean(value));
+    if (new Set(identifiers).size !== identifiers.length) throw new AppError(409, "User IDs must be unique");
+    if (identifiers.length > 0) {
+      const placeholders = identifiers.map((_, index) => `:identifier${index}`).join(", ");
+      const params = Object.fromEntries(identifiers.map((value, index) => [`identifier${index}`, value]));
+      const [existingRows] = await pool.query(
+        `
+          SELECT id
+          FROM users
+          WHERE id <> :id
+            AND (
+              user_identifier IN (${placeholders})
+              OR new_user_identifier IN (${placeholders})
+            )
+          LIMIT 1
+        `,
+        { id: request.user!.id, ...params }
+      );
+      if (Array.isArray(existingRows) && existingRows.length > 0) throw new AppError(409, "User ID already exists");
+    }
+
     await pool.query(
       `
         UPDATE users
         SET display_name = COALESCE(:displayName, display_name),
-            email = COALESCE(:email, email)
+            email = COALESCE(:email, email),
+            user_identifier = :userIdentifier,
+            new_user_identifier = :newUserIdentifier
         WHERE id = :id
       `,
       {
         id: request.user!.id,
         displayName: body.displayName ?? null,
-        email: body.email ?? null
+        email: body.email ?? null,
+        userIdentifier,
+        newUserIdentifier
       }
     );
 

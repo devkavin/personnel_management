@@ -10,6 +10,8 @@ interface TokenPayload {
   clientId: number | null;
   email: string;
   displayName: string;
+  userIdentifier: string | null;
+  newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
 }
@@ -25,6 +27,8 @@ export function signUserToken(user: AuthUser) {
       clientId: user.clientId,
       email: user.email,
       displayName: user.displayName,
+      userIdentifier: user.userIdentifier,
+      newUserIdentifier: user.newUserIdentifier,
       role: user.role,
       status: user.status
     },
@@ -46,6 +50,8 @@ export function requireAuth(request: Request, _response: Response, next: NextFun
       clientId: payload.clientId,
       email: payload.email,
       displayName: payload.displayName,
+      userIdentifier: payload.userIdentifier,
+      newUserIdentifier: payload.newUserIdentifier,
       role: payload.role,
       status: payload.status
     };

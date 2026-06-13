@@ -13,7 +13,15 @@ router.get(
     if (request.user!.role === "super_admin") {
       const [[clientStats], [userStats]] = await Promise.all([
         pool.query("SELECT COUNT(*) AS totalClients, SUM(status = 'active') AS activeClients FROM clients"),
-        pool.query("SELECT COUNT(*) AS totalUsers, SUM(role = 'client_admin') AS clientAdmins FROM users WHERE role <> 'super_admin'")
+        pool.query(`
+          SELECT
+            COUNT(*) AS totalUsers,
+            SUM(role = 'tenant_admin') AS tenantAdmins,
+            SUM(role = 'tenant_staff') AS tenantStaff,
+            SUM(role = 'tenant_member') AS tenantMembers
+          FROM users
+          WHERE role <> 'super_admin'
+        `)
       ]);
       response.json({
         scope: "system",
