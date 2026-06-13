@@ -11,8 +11,11 @@ describe("auth token", () => {
       clientId: 3,
       displayName: "A User",
       email: "user@example.com",
-      role: "client_admin",
-      status: "active"
+      userIdentifier: "SVC/001",
+      newUserIdentifier: null,
+      role: "tenant_admin",
+      status: "active",
+      requiresOnboarding: false
     };
 
     const token = signUserToken(user);
@@ -20,6 +23,6 @@ describe("auth token", () => {
 
     expect(decoded.sub).toBe("7");
     expect(decoded.clientId).toBe(3);
-    expect(decoded.role).toBe("client_admin");
+    expect(decoded.role).toBe("tenant_admin");
   });
 });

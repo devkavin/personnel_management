@@ -1,12 +1,15 @@
-export type Role = "super_admin" | "client_admin" | "user";
+export type Role = "super_admin" | "tenant_admin" | "tenant_staff" | "tenant_member";
 
 export interface AuthUser {
   id: number;
   clientId: number | null;
-  email: string;
+  email: string | null;
   displayName: string;
+  userIdentifier: string | null;
+  newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
+  requiresOnboarding: boolean;
 }
 
 export interface LoginResponse {
@@ -23,7 +26,9 @@ export interface DashboardResponse {
   };
   users?: {
     totalUsers?: number;
-    clientAdmins?: number;
+    tenantAdmins?: number;
+    tenantStaff?: number;
+    tenantMembers?: number;
   };
   people?: {
     totalPeople?: number;
@@ -41,21 +46,95 @@ export interface Tenant {
   slug: string;
   personSingular: string;
   personPlural: string;
+  staffSingular: string;
+  staffPlural: string;
+  memberSingular: string;
+  memberPlural: string;
+  userIdentifierLabel: string;
+  newUserIdentifierLabel: string;
+  memberGroupSingular: string;
+  memberGroupPlural: string;
   status: "active" | "inactive";
   createdAt?: string;
+}
+
+export interface TenantFeature {
+  code: string;
+  name: string;
+  description: string | null;
+  enabled: boolean | number;
+}
+
+export interface AvailableSystem {
+  code: string;
+  name: string;
+  description: string | null;
+  status: "active" | "inactive";
+  tenantCount?: number;
+  enabledTenantCount?: number;
+}
+
+export interface SystemDashboardResponse {
+  system: AvailableSystem;
+  stats: {
+    totalTenants?: number;
+    enabledTenants?: number;
+    staffAttendanceTenants?: number;
+    memberAttendanceTenants?: number;
+  };
+}
+
+export interface TenantSystemSetting {
+  tenantId: number;
+  tenantName: string;
+  tenantSlug: string;
+  enabled: boolean | number;
+  staffAttendanceEnabled: string | boolean | number;
+  memberAttendanceEnabled: string | boolean | number;
+}
+
+export interface SystemSetting {
+  key: string;
+  name: string;
+  scope: string;
+  type: "select" | "boolean";
+  value: string;
+  options?: string[];
 }
 
 export interface Person {
   id: number;
   clientId: number;
   displayName: string;
-  email: string;
-  role: "client_admin" | "user";
+  email: string | null;
+  userIdentifier: string | null;
+  newUserIdentifier: string | null;
+  role: "tenant_admin" | "tenant_staff" | "tenant_member";
   status: "active" | "inactive";
+  requiresOnboarding: boolean;
+  createdAt?: string;
+}
+
+export interface MemberGroupMember {
+  id: number;
+  displayName: string;
+}
+
+export interface MemberGroup {
+  id: number;
+  clientId: number;
+  name: string;
+  description: string | null;
+  status: "active" | "inactive";
+  createdByUserId?: number;
+  createdByName?: string;
+  memberCount: number;
+  members: MemberGroupMember[] | string | null;
   createdAt?: string;
 }
 
 export type AttendanceStatus = "present" | "absent" | "late" | "excused";
+export type AttendanceAudience = "staff" | "member";
 
 export interface AttendanceRecord {
   id: number;
@@ -126,15 +205,147 @@ export const api = {
       slug: string;
       personSingular: string;
       personPlural: string;
+      staffSingular: string;
+      staffPlural: string;
+      memberSingular: string;
+      memberPlural: string;
+      userIdentifierLabel: string;
+      newUserIdentifierLabel: string;
+      memberGroupSingular: string;
+      memberGroupPlural: string;
       admin: {
         displayName: string;
         email: string;
+        userIdentifier?: string;
+        newUserIdentifier?: string;
         password: string;
       };
     }
   ) {
     return request<Tenant>("/tenants", {
       method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  currentTenant(token: string) {
+    return request<{ tenant: Tenant }>("/tenants/current", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  currentTenantFeatures(token: string) {
+    return request<{ features: TenantFeature[] }>("/tenants/current/features", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  updateTenant(token: string, id: number, payload: Partial<Omit<Tenant, "id" | "createdAt">>) {
+    return request<{ message: string }>(`/tenants/${id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  deactivateTenant(token: string, id: number) {
+    return request<void>(`/tenants/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  tenantFeatures(token: string, id: number) {
+    return request<{ features: TenantFeature[] }>(`/tenants/${id}/features`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  updateTenantFeatures(token: string, id: number, features: Record<string, boolean>) {
+    return request<{ message: string }>(`/tenants/${id}/features`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ features })
+    });
+  },
+
+  systems(token: string) {
+    return request<{ systems: AvailableSystem[] }>("/systems", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  systemDashboard(token: string, code: string) {
+    return request<SystemDashboardResponse>(`/systems/${code}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  systemSettings(token: string, code: string) {
+    return request<{ system: AvailableSystem; settings: SystemSetting[] }>(`/systems/${code}/settings`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  updateSystemSettings(
+    token: string,
+    code: string,
+    payload: {
+      name: string;
+      description: string | null;
+      status: "active" | "inactive";
+      settings: {
+        defaultAttendanceStatus?: AttendanceStatus;
+        notesEnabled?: boolean;
+      };
+    }
+  ) {
+    return request<{ message: string }>(`/systems/${code}/settings`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  systemTenantSettings(token: string, code: string) {
+    return request<{ tenantSettings: TenantSystemSetting[] }>(`/systems/${code}/tenant-settings`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  updateSystemTenantSettings(
+    token: string,
+    code: string,
+    tenantId: number,
+    payload: { enabled: boolean; settings: { staffAttendanceEnabled?: boolean; memberAttendanceEnabled?: boolean } }
+  ) {
+    return request<{ message: string }>(`/systems/${code}/tenant-settings/${tenantId}`, {
+      method: "PUT",
       headers: {
         Authorization: `Bearer ${token}`
       },
@@ -155,8 +366,10 @@ export const api = {
     payload: {
       displayName: string;
       email: string;
+      userIdentifier?: string;
+      newUserIdentifier?: string;
       password: string;
-      role: "client_admin" | "user";
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
     }
   ) {
     return request<Person>("/people", {
@@ -168,8 +381,131 @@ export const api = {
     });
   },
 
-  attendance(token: string, filters: { fromDate?: string; toDate?: string; personId?: number } = {}) {
+  onboardPerson(
+    token: string,
+    payload: {
+      userIdentifier: string;
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
+      memberGroupId?: number;
+    }
+  ) {
+    return request<Person>("/people/onboard", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  bulkOnboardPeople(
+    token: string,
+    payload: {
+      userIdentifiers: string;
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
+      memberGroupId?: number;
+    }
+  ) {
+    return request<{ created: number; skipped: number; errors: Array<{ row: number; userIdentifier: string; message: string }> }>(
+      "/people/onboard/bulk",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+  },
+
+  updatePerson(
+    token: string,
+    id: number,
+    payload: Partial<{
+      displayName: string;
+      email: string;
+      userIdentifier: string | null;
+      newUserIdentifier: string | null;
+      password: string;
+      role: "tenant_admin" | "tenant_staff" | "tenant_member";
+      status: "active" | "inactive";
+    }>
+  ) {
+    return request<{ message: string }>(`/people/${id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  deactivatePerson(token: string, id: number) {
+    return request<void>(`/people/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  memberGroups(token: string) {
+    return request<{ groups: MemberGroup[] }>("/member-groups", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  createMemberGroup(
+    token: string,
+    payload: {
+      name: string;
+      description?: string | null;
+      status?: "active" | "inactive";
+      memberIds: number[];
+    }
+  ) {
+    return request<MemberGroup>("/member-groups", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  updateMemberGroup(
+    token: string,
+    id: number,
+    payload: Partial<{
+      name: string;
+      description: string | null;
+      status: "active" | "inactive";
+      memberIds: number[];
+    }>
+  ) {
+    return request<{ message: string }>(`/member-groups/${id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  deactivateMemberGroup(token: string, id: number) {
+    return request<void>(`/member-groups/${id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  },
+
+  attendance(token: string, filters: { audience?: AttendanceAudience; fromDate?: string; toDate?: string; personId?: number } = {}) {
     const params = new URLSearchParams();
+    if (filters.audience) params.set("audience", filters.audience);
     if (filters.fromDate) params.set("fromDate", filters.fromDate);
     if (filters.toDate) params.set("toDate", filters.toDate);
     if (filters.personId) params.set("personId", String(filters.personId));
@@ -186,6 +522,7 @@ export const api = {
     token: string,
     payload: {
       personId: number;
+      audience: AttendanceAudience;
       attendanceDate: string;
       status: AttendanceStatus;
       notes?: string;
@@ -200,8 +537,18 @@ export const api = {
     });
   },
 
-  updateProfile(token: string, payload: { displayName: string; email: string }) {
+  updateProfile(token: string, payload: { displayName: string; email: string | null; userIdentifier?: string | null; newUserIdentifier?: string | null }) {
     return request<LoginResponse>("/profile", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+  },
+
+  completeOnboarding(token: string, payload: { displayName: string; email?: string | null; password: string }) {
+    return request<LoginResponse>("/profile/onboarding", {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`

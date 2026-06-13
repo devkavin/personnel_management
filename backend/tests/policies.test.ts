@@ -8,8 +8,11 @@ const superAdmin: AuthUser = {
   clientId: null,
   displayName: "System Admin",
   email: "admin@example.com",
+  userIdentifier: null,
+  newUserIdentifier: null,
   role: "super_admin",
-  status: "active"
+  status: "active",
+  requiresOnboarding: false
 };
 
 const clientAdmin: AuthUser = {
@@ -17,8 +20,11 @@ const clientAdmin: AuthUser = {
   clientId: 10,
   displayName: "Client Admin",
   email: "client@example.com",
-  role: "client_admin",
-  status: "active"
+  userIdentifier: "ADM/001",
+  newUserIdentifier: null,
+  role: "tenant_admin",
+  status: "active",
+  requiresOnboarding: false
 };
 
 describe("tenant policies", () => {

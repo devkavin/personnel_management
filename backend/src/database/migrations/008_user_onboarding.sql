@@ -1,0 +1,3 @@
+ALTER TABLE users
+  MODIFY email VARCHAR(190) NULL,
+  ADD COLUMN requires_onboarding BOOLEAN NOT NULL DEFAULT FALSE AFTER status;
