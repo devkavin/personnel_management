@@ -11,6 +11,7 @@ export interface AuthUser {
   newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
+  timezone: string;
   requiresOnboarding: boolean;
 }
 
@@ -74,9 +75,9 @@ export interface ScheduleWeekEntry { weekday: number; slotId: number; sessionTem
 export interface ScheduleWeekTemplate { id: number; name: string; description: string | null; ownerName: string; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] | string | null }
 export interface ScheduleSnapshot { id: number; name: string; durationMinutes: number | null; objective: string | null; instructions: string | null; intensity: string | null; location: string | null; equipment: string | null; staffNotes?: string | null }
 export interface ScheduleOccurrence { id: number; planId: number; planName: string; scheduleDate: string; slotId: number; slotName: string; sessionSnapshot: ScheduleSnapshot | string; taxonomyPath: string[] | string; status: "draft" | "published" | "cancelled" }
-export interface SchedulePlan { id: number; name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; status: "draft" | "published" | "cancelled"; ownerName: string; occurrenceCount: number; publishedAt: string | null }
+export interface SchedulePlan { id: number; name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; status: "draft" | "published" | "cancelled"; ownerName: string; occurrenceCount: number; publishedAt: string | null; groupIds: number[] | string; memberIds: number[] | string }
 export interface ScheduleConflict { assignmentId: number; memberId: number; memberName: string; scheduleDate: string; slotId: number; slotName: string; existingSessionName: string }
-export interface MyScheduleAssignment extends Omit<ScheduleOccurrence, "id" | "status"> { id: number; status: "active" | "replaced" | "cancelled" }
+export interface MyScheduleAssignment extends Omit<ScheduleOccurrence, "id" | "status"> { id: number; slotStartTime?: string | null; status: "active" | "replaced" | "cancelled" }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -157,7 +158,7 @@ export const api = {
   schedulePlans(token: string, fromDate: string, toDate: string) { return get<{ plans: SchedulePlan[] }>(`/scheduling/plans?fromDate=${fromDate}&toDate=${toDate}`, token); },
   scheduleCalendar(token: string, fromDate: string, toDate: string) { return get<{ occurrences: ScheduleOccurrence[] }>(`/scheduling/calendar?fromDate=${fromDate}&toDate=${toDate}`, token); },
   createSchedulePlan(token: string, payload: { name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; weekTemplateId?: number | null; entries: ScheduleWeekEntry[]; groupIds: number[]; memberIds: number[] }) { return request<{ id: number; occurrenceCount: number }>("/scheduling/plans", json("POST", token, payload)); },
-  updateSchedulePlan(token: string, id: number, payload: Partial<{ name: string; groupIds: number[]; memberIds: number[] }>) { return request<{ message: string }>(`/scheduling/plans/${id}`, json("PATCH", token, payload)); },
+  updateSchedulePlan(token: string, id: number, payload: Partial<{ name: string; startDate: string; endDate: string; groupIds: number[]; memberIds: number[] }>) { return request<{ message: string }>(`/scheduling/plans/${id}`, json("PATCH", token, payload)); },
   deleteSchedulePlan(token: string, id: number) { return request<void>(`/scheduling/plans/${id}`, json("DELETE", token)); },
   scheduleConflicts(token: string, id: number) { return get<{ conflicts: ScheduleConflict[] }>(`/scheduling/plans/${id}/conflicts`, token); },
   publishSchedule(token: string, id: number, replaceAssignmentIds: number[]) { return request<{ message: string; assignmentCount: number }>(`/scheduling/plans/${id}/publish`, json("POST", token, { replaceAssignmentIds })); },
@@ -166,7 +167,7 @@ export const api = {
   myScheduleDetail(token: string, id: number) { return get<{ assignment: MyScheduleAssignment }>(`/scheduling/my/${id}`, token); },
 
   profile(token: string) { return get<{ user: AuthUser }>("/profile", token); },
-  updateProfile(token: string, payload: { displayName: string; email: string | null; userIdentifier?: string | null; newUserIdentifier?: string | null }) { return request<LoginResponse>("/profile", json("PATCH", token, payload)); },
+  updateProfile(token: string, payload: { displayName: string; email: string | null; userIdentifier?: string | null; newUserIdentifier?: string | null; timezone?: string }) { return request<LoginResponse>("/profile", json("PATCH", token, payload)); },
   completeOnboarding(token: string, payload: { displayName: string; email?: string | null; password: string }) { return request<LoginResponse>("/profile/onboarding", json("PATCH", token, payload)); },
   updatePassword(token: string, payload: { currentPassword: string; newPassword: string }) { return request<{ message: string }>("/profile/password", json("PATCH", token, payload)); }
 };

@@ -5,6 +5,7 @@ import { pool } from "../../database/pool.js";
 import { requireAuth, requireRoles } from "../../middleware/auth.js";
 import { AppError, asyncHandler, validate } from "../../shared/http.js";
 import { assertValidUserIdentifier } from "../../shared/identifiers.js";
+import { env } from "../../config/env.js";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const clientSchema = z.object({
   newUserIdentifierLabel: z.string().min(2).default("New User ID"),
   memberGroupSingular: z.string().min(2).default("Class"),
   memberGroupPlural: z.string().min(2).default("Classes"),
-  timezone: z.string().min(1).max(80).default("Asia/Colombo").refine((value) => {
+  timezone: z.string().min(1).max(80).default(env.APP_TIMEZONE).refine((value) => {
     try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; }
   }, "Enter a valid IANA timezone"),
   admin: z

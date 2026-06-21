@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "../src/modules/scheduling/domain.js";
+import { databaseDate, expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "../src/modules/scheduling/domain.js";
 
 describe("scheduling domain", () => {
+  it("normalizes MySQL date objects before publishing", () => {
+    expect(databaseDate("2026-06-22T00:00:00.000Z")).toBe("2026-06-22");
+    expect(databaseDate(new Date(2026, 5, 22))).toBe("2026-06-22");
+  });
+
   it("supports bounded arbitrary date ranges", () => {
     const dates = generateScheduleDates("2026-06-19", "2026-06-22", "range");
     expect(dates).toEqual([

@@ -12,6 +12,7 @@ const superAdmin: AuthUser = {
   newUserIdentifier: null,
   role: "super_admin",
   status: "active",
+  timezone: "Asia/Colombo",
   requiresOnboarding: false
 };
 
@@ -24,6 +25,7 @@ const clientAdmin: AuthUser = {
   newUserIdentifier: null,
   role: "tenant_admin",
   status: "active",
+  timezone: "Asia/Colombo",
   requiresOnboarding: false
 };
 

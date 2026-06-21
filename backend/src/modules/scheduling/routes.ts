@@ -4,7 +4,7 @@ import { z } from "zod";
 import { pool } from "../../database/pool.js";
 import { requireAuth, requireRoles } from "../../middleware/auth.js";
 import { AppError, asyncHandler, validate } from "../../shared/http.js";
-import { expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "./domain.js";
+import { databaseDate, expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "./domain.js";
 
 const router = Router();
 const statusSchema = z.enum(["active", "archived"]);
@@ -61,6 +61,10 @@ const planSchema = z.object({
 function tenantId(request: Request) {
   if (!request.user?.clientId) throw new AppError(403, "Scheduling is only available inside a tenant");
   return request.user.clientId;
+}
+
+function jsonDatabaseValue(value: unknown) {
+  return typeof value === "string" ? value : JSON.stringify(value);
 }
 
 async function requireScheduling(request: Request, _response: Response, next: NextFunction) {
@@ -291,7 +295,10 @@ async function planConflicts(connection: PoolConnection, planId: number, clientI
 
 router.get("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const fromDate = String(request.query.fromDate ?? "1900-01-01"); const toDate = String(request.query.toDate ?? "2999-12-31");
-  const [plans] = await pool.query(`SELECT plan.id, plan.name, plan.generation_mode AS mode, plan.start_date AS startDate, plan.end_date AS endDate, plan.status, plan.owner_user_id AS ownerUserId, owner.display_name AS ownerName, plan.published_at AS publishedAt, COUNT(occurrence.id) AS occurrenceCount FROM schedule_plans plan INNER JOIN users owner ON owner.id = plan.owner_user_id LEFT JOIN schedule_occurrences occurrence ON occurrence.plan_id = plan.id WHERE plan.client_id = :clientId AND plan.end_date >= :fromDate AND plan.start_date <= :toDate GROUP BY plan.id, plan.name, plan.generation_mode, plan.start_date, plan.end_date, plan.status, plan.owner_user_id, owner.display_name, plan.published_at ORDER BY plan.start_date DESC`, { clientId, fromDate, toDate });
+  const [plans] = await pool.query(`SELECT plan.id, plan.name, plan.generation_mode AS mode, plan.start_date AS startDate, plan.end_date AS endDate, plan.status, plan.owner_user_id AS ownerUserId, owner.display_name AS ownerName, plan.published_at AS publishedAt, COUNT(occurrence.id) AS occurrenceCount,
+    (SELECT COALESCE(JSON_ARRAYAGG(target.member_group_id), JSON_ARRAY()) FROM schedule_plan_target_groups target WHERE target.plan_id = plan.id) AS groupIds,
+    (SELECT COALESCE(JSON_ARRAYAGG(target.user_id), JSON_ARRAY()) FROM schedule_plan_target_users target WHERE target.plan_id = plan.id) AS memberIds
+    FROM schedule_plans plan INNER JOIN users owner ON owner.id = plan.owner_user_id LEFT JOIN schedule_occurrences occurrence ON occurrence.plan_id = plan.id WHERE plan.client_id = :clientId AND plan.end_date >= :fromDate AND plan.start_date <= :toDate GROUP BY plan.id, plan.name, plan.generation_mode, plan.start_date, plan.end_date, plan.status, plan.owner_user_id, owner.display_name, plan.published_at ORDER BY plan.start_date DESC`, { clientId, fromDate, toDate });
   response.json({ plans });
 }));
 
@@ -337,12 +344,45 @@ router.post("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler
 
 router.patch("/plans/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const planId = Number(request.params.id);
-  const body = validate(z.object({ name: z.string().trim().min(2).max(190).optional(), groupIds: idList.optional(), memberIds: idList.optional() }), request.body);
+  const body = validate(z.object({ name: z.string().trim().min(2).max(190).optional(), startDate: z.string().optional(), endDate: z.string().optional(), groupIds: idList.optional(), memberIds: idList.optional() }), request.body);
   const connection = await pool.getConnection();
   try { await connection.beginTransaction();
-    const [plans] = await connection.query<RowDataPacket[]>("SELECT id FROM schedule_plans WHERE id = :planId AND client_id = :clientId AND status = 'draft' FOR UPDATE", { planId, clientId });
+    const [plans] = await connection.query<RowDataPacket[]>("SELECT id, generation_mode AS mode, start_date AS startDate, end_date AS endDate FROM schedule_plans WHERE id = :planId AND client_id = :clientId AND status = 'draft' FOR UPDATE", { planId, clientId });
     if (!plans[0]) throw new AppError(404, "Draft schedule not found");
     if (body.name) await connection.query("UPDATE schedule_plans SET name = :name WHERE id = :planId", { name: body.name, planId });
+    if (body.startDate !== undefined || body.endDate !== undefined) {
+      const mode = plans[0].mode as "day" | "week" | "range";
+      const startDate = body.startDate ?? databaseDate(plans[0].startDate as string | Date);
+      const endDate = mode === "day" ? startDate : body.endDate ?? databaseDate(plans[0].endDate as string | Date);
+      const dates = generateScheduleDates(startDate, endDate, mode);
+      const [existing] = await connection.query<RowDataPacket[]>(
+        `SELECT id, schedule_date AS scheduleDate, slot_id AS slotId, session_template_id AS sessionTemplateId,
+         session_snapshot AS sessionSnapshot, taxonomy_path_snapshot AS taxonomyPath
+         FROM schedule_occurrences WHERE plan_id = :planId ORDER BY schedule_date, slot_id`, { planId }
+      );
+      if (!existing.length) throw new AppError(422, "Draft schedule has no sessions to regenerate");
+      const patterns = new Map<string, RowDataPacket>();
+      for (const occurrence of existing) {
+        const sourceDate = databaseDate(occurrence.scheduleDate as string | Date);
+        const source = new Date(`${sourceDate}T12:00:00Z`);
+        const weekday = source.getUTCDay() === 0 ? 7 : source.getUTCDay();
+        const key = mode === "day" ? `day:${Number(occurrence.slotId)}` : `${weekday}:${Number(occurrence.slotId)}`;
+        if (!patterns.has(key)) patterns.set(key, occurrence);
+      }
+      const generated = mode === "day"
+        ? [...patterns.values()].map((entry) => ({ date: startDate, entry }))
+        : dates.flatMap(({ date, weekday }) => [...patterns.entries()].filter(([key]) => key.startsWith(`${weekday}:`)).map(([, entry]) => ({ date, entry })));
+      if (!generated.length) throw new AppError(422, "The edited date range contains no matching sessions");
+      await connection.query("DELETE FROM schedule_occurrences WHERE plan_id = :planId", { planId });
+      for (const item of generated) {
+        await connection.query(
+          `INSERT INTO schedule_occurrences (client_id, plan_id, schedule_date, slot_id, session_template_id, session_snapshot, taxonomy_path_snapshot)
+           VALUES (:clientId, :planId, :date, :slotId, :sessionTemplateId, :sessionSnapshot, :taxonomyPath)`,
+          { clientId, planId, date: item.date, slotId: item.entry.slotId, sessionTemplateId: item.entry.sessionTemplateId, sessionSnapshot: jsonDatabaseValue(item.entry.sessionSnapshot), taxonomyPath: jsonDatabaseValue(item.entry.taxonomyPath) }
+        );
+      }
+      await connection.query("UPDATE schedule_plans SET start_date = :startDate, end_date = :endDate WHERE id = :planId", { startDate, endDate, planId });
+    }
     if (body.groupIds !== undefined || body.memberIds !== undefined) {
       const groupIds = body.groupIds ?? []; const memberIds = body.memberIds ?? [];
       if (!groupIds.length && !memberIds.length) throw new AppError(422, "Select at least one class or member");
@@ -381,9 +421,9 @@ router.post("/plans/:id/publish", requireRoles("tenant_admin", "tenant_staff"), 
     const conflicts = await planConflicts(connection, planId, clientId, true); const unresolved = conflicts.filter((conflict) => !allowedReplacements.has(Number(conflict.assignmentId)));
     if (unresolved.length) { await connection.rollback(); return response.status(409).json({ error: { message: "Schedule conflicts require review", conflicts: unresolved } }); }
     const [occurrences] = await connection.query<RowDataPacket[]>("SELECT id, schedule_date AS scheduleDate, slot_id AS slotId FROM schedule_occurrences WHERE plan_id = :planId AND client_id = :clientId ORDER BY schedule_date, slot_id", { planId, clientId });
-    const conflictByCell = new Map(conflicts.map((conflict) => [`${Number(conflict.memberId)}:${String(conflict.scheduleDate).slice(0, 10)}:${Number(conflict.slotId)}`, Number(conflict.assignmentId)]));
+    const conflictByCell = new Map(conflicts.map((conflict) => [`${Number(conflict.memberId)}:${databaseDate(conflict.scheduleDate as string | Date)}:${Number(conflict.slotId)}`, Number(conflict.assignmentId)]));
     for (const occurrence of occurrences) for (const memberId of members) {
-      const date = String(occurrence.scheduleDate).slice(0, 10); const key = `${memberId}:${date}:${Number(occurrence.slotId)}`; const replacedId = conflictByCell.get(key);
+      const date = databaseDate(occurrence.scheduleDate as string | Date); const key = `${memberId}:${date}:${Number(occurrence.slotId)}`; const replacedId = conflictByCell.get(key);
       if (replacedId) await connection.query("UPDATE schedule_assignments SET status = 'replaced' WHERE id = :id AND client_id = :clientId AND status = 'active'", { id: replacedId, clientId });
       const [result] = await connection.query(`INSERT INTO schedule_assignments (client_id, occurrence_id, member_user_id, schedule_date, slot_id, published_by_user_id) VALUES (:clientId, :occurrenceId, :memberId, :scheduleDate, :slotId, :userId)`, { clientId, occurrenceId: occurrence.id, memberId, scheduleDate: date, slotId: occurrence.slotId, userId: request.user!.id });
       if (replacedId) await connection.query("UPDATE schedule_assignments SET replaced_by_assignment_id = :replacementId WHERE id = :replacedId", { replacementId: (result as { insertId: number }).insertId, replacedId });
@@ -402,13 +442,13 @@ router.post("/assignments/:id/cancel", requireRoles("tenant_admin", "tenant_staf
 
 router.get("/my", requireRoles("tenant_member"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const fromDate = String(request.query.fromDate ?? "1900-01-01"); const toDate = String(request.query.toDate ?? "2999-12-31");
-  const [assignments] = await pool.query(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, assignment.slot_id AS slotId, slot.name AS slotName, occurrence.plan_id AS planId, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, assignment.status FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' AND assignment.schedule_date BETWEEN :fromDate AND :toDate ORDER BY assignment.schedule_date, slot.sort_order`, { clientId, userId: request.user!.id, fromDate, toDate });
+  const [assignments] = await pool.query(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, assignment.slot_id AS slotId, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, occurrence.plan_id AS planId, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, assignment.status FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' AND assignment.schedule_date BETWEEN :fromDate AND :toDate ORDER BY assignment.schedule_date, slot.sort_order`, { clientId, userId: request.user!.id, fromDate, toDate });
   response.json({ assignments });
 }));
 
 router.get("/my/:assignmentId", requireRoles("tenant_member"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const assignmentId = Number(request.params.assignmentId);
-  const [assignments] = await pool.query<RowDataPacket[]>(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, slot.name AS slotName, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.id = :assignmentId AND assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' LIMIT 1`, { assignmentId, clientId, userId: request.user!.id });
+  const [assignments] = await pool.query<RowDataPacket[]>(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.id = :assignmentId AND assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' LIMIT 1`, { assignmentId, clientId, userId: request.user!.id });
   if (!assignments[0]) throw new AppError(404, "Schedule assignment not found");
   response.json({ assignment: assignments[0] });
 }));

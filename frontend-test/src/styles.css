@@ -746,6 +746,30 @@ body {
   gap: 16px;
 }
 
+.topbar-clock {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.topbar-clock > div {
+  display: grid;
+  line-height: 1.15;
+}
+
+.topbar-clock strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-clock span {
+  color: var(--muted);
+  font-size: .75rem;
+}
+
 .calendar-toolbar .field-stack {
   width: min(260px, 100%);
   margin-inline-start: auto;
@@ -790,6 +814,70 @@ body {
   color: var(--muted);
 }
 
+.member-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.member-agenda > [data-slot="content"],
+.selected-day-agenda > [data-slot="content"],
+.member-calendar-column {
+  display: grid;
+  gap: 10px;
+}
+
+.member-agenda-item > [data-slot="content"] {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+
+.member-agenda-date {
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  border-inline-end: 1px solid var(--line);
+}
+
+.member-agenda-date strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.member-agenda-date span,
+.agenda-meta,
+.agenda-meta span {
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.agenda-meta,
+.agenda-meta span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.agenda-meta {
+  gap: 12px;
+  margin-top: 5px;
+}
+
+.member-calendar-card [data-slot="content"] {
+  display: grid;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.member-calendar-card [role="application"] {
+  width: min(100%, 380px);
+}
+
 .schedule-editor-modal,
 .week-editor-modal {
   width: min(960px, calc(100vw - 28px));
@@ -828,7 +916,8 @@ body {
   .form-grid,
   .split-panels,
   .attendance-layout,
-  .dashboard-live-panels {
+  .dashboard-live-panels,
+  .member-dashboard-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -893,6 +982,15 @@ body {
 
   .row-actions > button {
     width: 100%;
+  }
+
+  .member-agenda-item > [data-slot="content"] {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+
+  .member-agenda-item > [data-slot="content"] > [data-slot="base"] {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .module-tabs [data-slot="tabs-list"] {

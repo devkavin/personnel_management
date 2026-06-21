@@ -13,6 +13,7 @@ import {
 import {
   CalendarCheck,
   CalendarDays,
+  Clock3,
   ChevronDown,
   LayoutDashboard,
   LogIn,
@@ -40,7 +41,7 @@ import {
 } from "recharts";
 import { api, type AuthUser, type DashboardResponse, type Role, type Tenant, type TenantFeature } from "./api";
 import { AttendancePage, DashboardDetails, PeoplePage, ProfilePage, SystemsPage, TenantsPage } from "./pages";
-import { SchedulingPage } from "./scheduling";
+import { MemberDashboard, SchedulingPage } from "./scheduling";
 
 const SESSION_KEY = "personnel_management_frontend_test_session";
 type ThemeMode = "light" | "dark";
@@ -414,6 +415,16 @@ function Topbar({
   onLogout: () => void;
   onThemeChange: (theme: ThemeMode) => void;
 }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const timezone = session.user.timezone || "Asia/Colombo";
+  const localDate = new Intl.DateTimeFormat(undefined, { timeZone: timezone, weekday: "short", year: "numeric", month: "short", day: "numeric" }).format(now);
+  const localTime = new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
+  const timezoneLabel = new Intl.DateTimeFormat(undefined, { timeZone: timezone, timeZoneName: "short" }).formatToParts(now).find((part) => part.type === "timeZoneName")?.value ?? timezone;
+
   return (
     <header className="topbar">
       <div>
@@ -421,7 +432,8 @@ function Topbar({
         <h1>{roleLabel(session.user.role)} workspace</h1>
       </div>
       <div className="topbar-actions">
-        <Button variant="outline" onPress={() => onThemeChange(theme === "dark" ? "light" : "dark")}>
+        <div className="topbar-clock" title={timezone}><Clock3 size={17} /><div><strong>{localTime}</strong><span>{localDate} | {timezoneLabel}</span></div></div>
+        <Button variant="outline" onPress={() => onThemeChange(theme === "dark" ? "light" : "dark")}> 
           {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
           {theme === "dark" ? "Dark" : "Light"}
         </Button>
@@ -450,7 +462,8 @@ function Topbar({
   );
 }
 
-function OperationalDashboard({ dashboard, role, token, tenant, onNavigate }: { dashboard: DashboardResponse | null; role: Role; token: string; tenant: Tenant | null; onNavigate: (view: ViewKey) => void }) {
+function OperationalDashboard({ dashboard, role, token, tenant, user, schedulingEnabled, onNavigate }: { dashboard: DashboardResponse | null; role: Role; token: string; tenant: Tenant | null; user: AuthUser; schedulingEnabled: boolean; onNavigate: (view: ViewKey) => void }) {
+  if (role === "tenant_member") return <MemberDashboard token={token} tenant={tenant} displayName={user.displayName} timezone={user.timezone} schedulingEnabled={schedulingEnabled} onNavigate={() => onNavigate("my-schedule")} />;
   const total = role === "super_admin" ? dashboard?.clients?.totalClients : dashboard?.users?.totalUsers ?? dashboard?.people?.totalPeople;
   const active = role === "super_admin" ? dashboard?.clients?.activeClients : dashboard?.people?.activePeople;
   const present = attendanceCount(dashboard, "present");
@@ -505,8 +518,9 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
   }, [onSession, session.token]);
 
   useEffect(() => {
+    if (session.user.role === "tenant_member") { setDashboard(null); return; }
     api.dashboard(session.token).then(setDashboard).catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load dashboard"));
-  }, [reloadKey, session.token]);
+  }, [reloadKey, session.token, session.user.role]);
 
   useEffect(() => {
     if (session.user.role === "super_admin") return;
@@ -523,14 +537,14 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
 
   const page = useMemo(() => {
     const changed = () => setReloadKey((value) => value + 1);
-    if (view === "dashboard") return <OperationalDashboard dashboard={dashboard} role={session.user.role} token={session.token} tenant={tenant} onNavigate={setView} />;
+    if (view === "dashboard") return session.user.role === "tenant_member" && !tenant ? <Card className="state-card"><Card.Content><Spinner /><span>Loading your workspace</span></Card.Content></Card> : <OperationalDashboard dashboard={dashboard} role={session.user.role} token={session.token} tenant={tenant} user={session.user} schedulingEnabled={features.some((feature) => feature.code === "scheduling" && Boolean(feature.enabled))} onNavigate={setView} />;
     if (view === "attendance" && tenant) return <AttendancePage token={session.token} tenant={tenant} features={features} onChanged={changed} />;
     if (view === "people") return session.user.role === "super_admin" ? <TenantsPage token={session.token} onChanged={changed} /> : tenant ? <PeoplePage token={session.token} tenant={tenant} role={session.user.role} onChanged={changed} /> : null;
     if (view === "systems" && session.user.role === "super_admin") return <SystemsPage token={session.token} />;
-    if (tenant && view === "schedule-calendar") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="calendar" />;
-    if (tenant && view === "schedule-add") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="add" />;
-    if (tenant && view === "schedule-setup") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="setup" />;
-    if (tenant && view === "my-schedule") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="my" />;
+    if (tenant && view === "schedule-calendar") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="calendar" />;
+    if (tenant && view === "schedule-add") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="add" />;
+    if (tenant && view === "schedule-setup") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="setup" />;
+    if (tenant && view === "my-schedule") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="my" />;
     return <ProfilePage session={session} tenant={tenant} onSession={(next) => { localStorage.setItem(SESSION_KEY, JSON.stringify(next)); onSession(next); }} />;
   }, [dashboard, features, onSession, session, tenant, view]);
 

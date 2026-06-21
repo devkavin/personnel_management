@@ -6,6 +6,7 @@ import { requireAuth, signUserToken } from "../../middleware/auth.js";
 import { AppError, asyncHandler, validate } from "../../shared/http.js";
 import { assertValidUserIdentifier } from "../../shared/identifiers.js";
 import type { AuthUser } from "../../shared/types.js";
+import { env } from "../../config/env.js";
 
 const router = Router();
 
@@ -14,6 +15,10 @@ const profileSchema = z.object({
   email: z.string().email().nullable().optional(),
   userIdentifier: z.string().nullable().optional(),
   newUserIdentifier: z.string().nullable().optional()
+  ,timezone: z.string().min(1).max(80).optional().refine((value) => {
+    if (!value) return true;
+    try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; }
+  }, "Enter a valid IANA timezone")
 });
 
 const passwordSchema = z.object({
@@ -37,6 +42,7 @@ function mapUser(row: any): AuthUser {
     newUserIdentifier: row.new_user_identifier,
     role: row.role,
     status: row.status,
+    timezone: row.timezone ?? env.APP_TIMEZONE,
     requiresOnboarding: Boolean(row.requires_onboarding)
   };
 }
@@ -90,6 +96,7 @@ router.patch(
             email = COALESCE(:email, email),
             user_identifier = :userIdentifier,
             new_user_identifier = :newUserIdentifier
+            ,timezone = COALESCE(:timezone, timezone)
         WHERE id = :id
       `,
       {
@@ -98,6 +105,7 @@ router.patch(
         email: body.email ?? null,
         userIdentifier,
         newUserIdentifier
+        ,timezone: body.timezone ?? null
       }
     );
 

@@ -14,6 +14,7 @@ interface TokenPayload {
   newUserIdentifier: string | null;
   role: Role;
   status: "active" | "inactive";
+  timezone: string;
   requiresOnboarding: boolean;
 }
 
@@ -32,6 +33,7 @@ export function signUserToken(user: AuthUser) {
       newUserIdentifier: user.newUserIdentifier,
       role: user.role,
       status: user.status,
+      timezone: user.timezone,
       requiresOnboarding: user.requiresOnboarding
     },
     env.JWT_SECRET,
@@ -56,6 +58,7 @@ export function requireAuth(request: Request, _response: Response, next: NextFun
       newUserIdentifier: payload.newUserIdentifier,
       role: payload.role,
       status: payload.status,
+      timezone: payload.timezone ?? env.APP_TIMEZONE,
       requiresOnboarding: Boolean(payload.requiresOnboarding)
     };
     return next();

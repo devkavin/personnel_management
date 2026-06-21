@@ -11,5 +11,6 @@ export interface AuthUser {
   newUserIdentifier: string | null;
   role: Role;
   status: UserStatus;
+  timezone: string;
   requiresOnboarding: boolean;
 }

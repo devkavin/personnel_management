@@ -32,6 +32,7 @@ function mapUser(row: any): AuthUser {
     newUserIdentifier: row.new_user_identifier,
     role: row.role,
     status: row.status,
+    timezone: row.timezone,
     requiresOnboarding: Boolean(row.requires_onboarding)
   };
 }
