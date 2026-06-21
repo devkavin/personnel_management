@@ -39,13 +39,14 @@ export interface Tenant {
   newUserIdentifierLabel: string;
   memberGroupSingular: string;
   memberGroupPlural: string;
+  timezone: string;
   status: "active" | "inactive";
   createdAt?: string;
 }
 
 export interface TenantFeature { code: string; name: string; description: string | null; enabled: boolean | number }
 export interface AvailableSystem { code: string; name: string; description: string | null; status: "active" | "inactive"; tenantCount?: number; enabledTenantCount?: number }
-export interface SystemDashboardResponse { system: AvailableSystem; stats: { totalTenants?: number; enabledTenants?: number; staffAttendanceTenants?: number; memberAttendanceTenants?: number } }
+export interface SystemDashboardResponse { system: AvailableSystem; stats: { totalTenants?: number; enabledTenants?: number; staffAttendanceTenants?: number; memberAttendanceTenants?: number; sessionTemplates?: number; weekTemplates?: number; publishedSchedules?: number } }
 export interface SystemSetting { key: string; name: string; scope: string; type: "select" | "boolean"; value: string; options?: string[] }
 export interface TenantSystemSetting { tenantId: number; tenantName: string; tenantSlug: string; enabled: boolean | number; staffAttendanceEnabled: string | boolean | number; memberAttendanceEnabled: string | boolean | number }
 
@@ -65,6 +66,17 @@ export interface Person {
 export interface MemberGroupMember { id: number; displayName: string }
 export interface MemberGroup { id: number; clientId: number; name: string; description: string | null; status: "active" | "inactive"; createdByUserId?: number; createdByName?: string; memberCount: number; members: MemberGroupMember[] | string | null; createdAt?: string }
 export interface AttendanceRecord { id: number; clientId: number; personId: number; personName: string; recordedByUserId: number; recordedByName: string; attendanceDate: string; status: AttendanceStatus; notes: string | null; createdAt?: string }
+export type ScheduleResourceStatus = "active" | "archived";
+export interface ScheduleTaxonomyNode { id: number; parentId: number | null; name: string; description: string | null; sortOrder: number; status: ScheduleResourceStatus }
+export interface ScheduleSlot { id: number; name: string; startTime: string | null; endTime: string | null; sortOrder: number; status: ScheduleResourceStatus }
+export interface ScheduleSessionTemplate { id: number; name: string; taxonomyNodeId: number; taxonomyName: string; durationMinutes: number | null; objective: string | null; instructions: string | null; intensity: string | null; location: string | null; equipment: string | null; staffNotes: string | null; ownerName: string; status: ScheduleResourceStatus }
+export interface ScheduleWeekEntry { weekday: number; slotId: number; sessionTemplateId: number }
+export interface ScheduleWeekTemplate { id: number; name: string; description: string | null; ownerName: string; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] | string | null }
+export interface ScheduleSnapshot { id: number; name: string; durationMinutes: number | null; objective: string | null; instructions: string | null; intensity: string | null; location: string | null; equipment: string | null; staffNotes?: string | null }
+export interface ScheduleOccurrence { id: number; planId: number; planName: string; scheduleDate: string; slotId: number; slotName: string; sessionSnapshot: ScheduleSnapshot | string; taxonomyPath: string[] | string; status: "draft" | "published" | "cancelled" }
+export interface SchedulePlan { id: number; name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; status: "draft" | "published" | "cancelled"; ownerName: string; occurrenceCount: number; publishedAt: string | null }
+export interface ScheduleConflict { assignmentId: number; memberId: number; memberName: string; scheduleDate: string; slotId: number; slotName: string; existingSessionName: string }
+export interface MyScheduleAssignment extends Omit<ScheduleOccurrence, "id" | "status"> { id: number; status: "active" | "replaced" | "cancelled" }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -125,6 +137,33 @@ export const api = {
     return get<{ records: AttendanceRecord[] }>(`/attendance${params.size ? `?${params}` : ""}`, token);
   },
   createAttendance(token: string, payload: { personId: number; audience: AttendanceAudience; attendanceDate: string; status: AttendanceStatus; notes?: string }) { return request<{ id: number; message: string }>("/attendance", json("POST", token, payload)); },
+
+  scheduleTaxonomy(token: string) { return get<{ nodes: ScheduleTaxonomyNode[] }>("/scheduling/taxonomy", token); },
+  createScheduleTaxonomy(token: string, payload: Omit<ScheduleTaxonomyNode, "id">) { return request<{ id: number }>("/scheduling/taxonomy", json("POST", token, payload)); },
+  updateScheduleTaxonomy(token: string, id: number, payload: Partial<Omit<ScheduleTaxonomyNode, "id">>) { return request<{ message: string }>(`/scheduling/taxonomy/${id}`, json("PATCH", token, payload)); },
+  archiveScheduleTaxonomy(token: string, id: number) { return request<void>(`/scheduling/taxonomy/${id}`, json("DELETE", token)); },
+  scheduleSlots(token: string) { return get<{ slots: ScheduleSlot[] }>("/scheduling/slots", token); },
+  createScheduleSlot(token: string, payload: Omit<ScheduleSlot, "id">) { return request<{ id: number }>("/scheduling/slots", json("POST", token, payload)); },
+  updateScheduleSlot(token: string, id: number, payload: Partial<Omit<ScheduleSlot, "id">>) { return request<{ message: string }>(`/scheduling/slots/${id}`, json("PATCH", token, payload)); },
+  archiveScheduleSlot(token: string, id: number) { return request<void>(`/scheduling/slots/${id}`, json("DELETE", token)); },
+  scheduleSessions(token: string) { return get<{ templates: ScheduleSessionTemplate[] }>("/scheduling/session-templates", token); },
+  createScheduleSession(token: string, payload: Omit<ScheduleSessionTemplate, "id" | "taxonomyName" | "ownerName">) { return request<{ id: number }>("/scheduling/session-templates", json("POST", token, payload)); },
+  updateScheduleSession(token: string, id: number, payload: Partial<Omit<ScheduleSessionTemplate, "id" | "taxonomyName" | "ownerName">>) { return request<{ message: string }>(`/scheduling/session-templates/${id}`, json("PATCH", token, payload)); },
+  archiveScheduleSession(token: string, id: number) { return request<void>(`/scheduling/session-templates/${id}`, json("DELETE", token)); },
+  scheduleWeekTemplates(token: string) { return get<{ templates: ScheduleWeekTemplate[] }>("/scheduling/week-templates", token); },
+  createScheduleWeekTemplate(token: string, payload: { name: string; description: string | null; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] }) { return request<{ id: number }>("/scheduling/week-templates", json("POST", token, payload)); },
+  updateScheduleWeekTemplate(token: string, id: number, payload: Partial<{ name: string; description: string | null; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] }>) { return request<{ message: string }>(`/scheduling/week-templates/${id}`, json("PATCH", token, payload)); },
+  archiveScheduleWeekTemplate(token: string, id: number) { return request<void>(`/scheduling/week-templates/${id}`, json("DELETE", token)); },
+  schedulePlans(token: string, fromDate: string, toDate: string) { return get<{ plans: SchedulePlan[] }>(`/scheduling/plans?fromDate=${fromDate}&toDate=${toDate}`, token); },
+  scheduleCalendar(token: string, fromDate: string, toDate: string) { return get<{ occurrences: ScheduleOccurrence[] }>(`/scheduling/calendar?fromDate=${fromDate}&toDate=${toDate}`, token); },
+  createSchedulePlan(token: string, payload: { name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; weekTemplateId?: number | null; entries: ScheduleWeekEntry[]; groupIds: number[]; memberIds: number[] }) { return request<{ id: number; occurrenceCount: number }>("/scheduling/plans", json("POST", token, payload)); },
+  updateSchedulePlan(token: string, id: number, payload: Partial<{ name: string; groupIds: number[]; memberIds: number[] }>) { return request<{ message: string }>(`/scheduling/plans/${id}`, json("PATCH", token, payload)); },
+  deleteSchedulePlan(token: string, id: number) { return request<void>(`/scheduling/plans/${id}`, json("DELETE", token)); },
+  scheduleConflicts(token: string, id: number) { return get<{ conflicts: ScheduleConflict[] }>(`/scheduling/plans/${id}/conflicts`, token); },
+  publishSchedule(token: string, id: number, replaceAssignmentIds: number[]) { return request<{ message: string; assignmentCount: number }>(`/scheduling/plans/${id}/publish`, json("POST", token, { replaceAssignmentIds })); },
+  cancelScheduleAssignment(token: string, id: number) { return request<{ message: string }>(`/scheduling/assignments/${id}/cancel`, json("POST", token)); },
+  mySchedule(token: string, fromDate: string, toDate: string) { return get<{ assignments: MyScheduleAssignment[] }>(`/scheduling/my?fromDate=${fromDate}&toDate=${toDate}`, token); },
+  myScheduleDetail(token: string, id: number) { return get<{ assignment: MyScheduleAssignment }>(`/scheduling/my/${id}`, token); },
 
   profile(token: string) { return get<{ user: AuthUser }>("/profile", token); },
   updateProfile(token: string, payload: { displayName: string; email: string | null; userIdentifier?: string | null; newUserIdentifier?: string | null }) { return request<LoginResponse>("/profile", json("PATCH", token, payload)); },

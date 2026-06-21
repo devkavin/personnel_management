@@ -12,6 +12,7 @@ import {
 } from "@heroui/react";
 import {
   CalendarCheck,
+  CalendarDays,
   ChevronDown,
   LayoutDashboard,
   LogIn,
@@ -20,6 +21,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  SquarePlus,
+  ListTree,
   ShieldCheck,
   Sun,
   UserRound,
@@ -37,10 +40,11 @@ import {
 } from "recharts";
 import { api, type AuthUser, type DashboardResponse, type Role, type Tenant, type TenantFeature } from "./api";
 import { AttendancePage, DashboardDetails, PeoplePage, ProfilePage, SystemsPage, TenantsPage } from "./pages";
+import { SchedulingPage } from "./scheduling";
 
 const SESSION_KEY = "personnel_management_frontend_test_session";
 type ThemeMode = "light" | "dark";
-type ViewKey = "dashboard" | "attendance" | "people" | "systems" | "profile";
+type ViewKey = "dashboard" | "attendance" | "people" | "systems" | "profile" | "schedule-calendar" | "schedule-add" | "schedule-setup" | "my-schedule";
 
 interface Session {
   token: string;
@@ -359,6 +363,21 @@ function Sidebar({
   onNavigate: (view: ViewKey) => void;
   onToggle: () => void;
 }) {
+  const schedulingEnabled = features.some((feature) => feature.code === "scheduling" && Boolean(feature.enabled));
+  const scheduleViews: Array<{ key: ViewKey; label: string; icon: ReactNode }> = role === "tenant_member"
+    ? [{ key: "my-schedule", label: "My schedule", icon: <CalendarDays size={19} /> }]
+    : [
+        { key: "schedule-calendar", label: "Calendar", icon: <CalendarDays size={19} /> },
+        { key: "schedule-add", label: "Add schedule", icon: <SquarePlus size={19} /> },
+        { key: "schedule-setup", label: "Schedule setup", icon: <ListTree size={19} /> }
+      ];
+  const [scheduleOpen, setScheduleOpen] = useState(scheduleViews.some((item) => item.key === view));
+
+  function navButton(item: { key: ViewKey; label: string; icon: ReactNode }) {
+    const button = <Button key={item.key} className={view === item.key ? "active" : ""} variant="ghost" isIconOnly={collapsed} onPress={() => onNavigate(item.key)}>{item.icon}{!collapsed ? <span>{item.label}</span> : null}</Button>;
+    return collapsed ? <Tooltip key={item.key}><Tooltip.Trigger>{button}</Tooltip.Trigger><Tooltip.Content placement="right">{item.label}</Tooltip.Content></Tooltip> : button;
+  }
+
   return (
     <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <div className="sidebar-brand">
@@ -366,26 +385,13 @@ function Sidebar({
         {!collapsed ? <strong>Personnel</strong> : null}
       </div>
       <div className="sidebar-nav">
-        {navItems(role, features).map((item) => {
-          const button = (
-            <Button
-              key={item.key}
-              className={view === item.key ? "active" : ""}
-              variant="ghost"
-              isIconOnly={collapsed}
-              onPress={() => onNavigate(item.key)}
-            >
-              {item.icon}
-              {!collapsed ? <span>{item.label}</span> : null}
-            </Button>
-          );
-          return collapsed ? (
-            <Tooltip key={item.key}>
-              <Tooltip.Trigger>{button}</Tooltip.Trigger>
-              <Tooltip.Content placement="right">{item.label}</Tooltip.Content>
-            </Tooltip>
-          ) : button;
-        })}
+        {navItems(role, features).map(navButton)}
+        {schedulingEnabled ? <div className="sidebar-group">
+          {collapsed ? scheduleViews.map(navButton) : <>
+            <Button className={scheduleViews.some((item) => item.key === view) ? "active group-active" : ""} variant="ghost" onPress={() => setScheduleOpen((value) => !value)}><CalendarDays size={19} /><span>Schedule</span><ChevronDown className={scheduleOpen ? "group-chevron open" : "group-chevron"} size={16} /></Button>
+            {scheduleOpen ? <div className="sidebar-subnav">{scheduleViews.map(navButton)}</div> : null}
+          </>}
+        </div> : null}
       </div>
       <Button variant="secondary" isIconOnly={collapsed} onPress={onToggle}>
         {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
@@ -521,6 +527,10 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
     if (view === "attendance" && tenant) return <AttendancePage token={session.token} tenant={tenant} features={features} onChanged={changed} />;
     if (view === "people") return session.user.role === "super_admin" ? <TenantsPage token={session.token} onChanged={changed} /> : tenant ? <PeoplePage token={session.token} tenant={tenant} role={session.user.role} onChanged={changed} /> : null;
     if (view === "systems" && session.user.role === "super_admin") return <SystemsPage token={session.token} />;
+    if (tenant && view === "schedule-calendar") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="calendar" />;
+    if (tenant && view === "schedule-add") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="add" />;
+    if (tenant && view === "schedule-setup") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="setup" />;
+    if (tenant && view === "my-schedule") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} section="my" />;
     return <ProfilePage session={session} tenant={tenant} onSession={(next) => { localStorage.setItem(SESSION_KEY, JSON.stringify(next)); onSession(next); }} />;
   }, [dashboard, features, onSession, session, tenant, view]);
 

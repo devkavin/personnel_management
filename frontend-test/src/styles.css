@@ -710,6 +710,120 @@ body {
   gap: 12px;
 }
 
+.sidebar-group,
+.sidebar-subnav,
+.tree-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-group .group-chevron {
+  margin-inline-start: auto;
+  transition: transform 160ms ease;
+}
+
+.sidebar-group .group-chevron.open {
+  transform: rotate(180deg);
+}
+
+.sidebar-subnav {
+  padding-inline-start: 14px;
+  border-inline-start: 1px solid var(--line);
+  margin-inline-start: 20px;
+}
+
+.sidebar-subnav button {
+  justify-content: flex-start;
+}
+
+.calendar-toolbar,
+.section-heading,
+.tree-row > [data-slot="content"],
+.schedule-day > [data-slot="header"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.calendar-toolbar .field-stack {
+  width: min(260px, 100%);
+  margin-inline-start: auto;
+}
+
+.section-heading p,
+.schedule-day [data-slot="header"] span,
+.schedule-session small {
+  color: var(--muted);
+}
+
+.tree-row > [data-slot="content"] {
+  padding: 12px 14px;
+}
+
+.tree-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.schedule-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+
+.schedule-day > [data-slot="content"] {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-session > [data-slot="content"] {
+  display: grid;
+  gap: 9px;
+}
+
+.schedule-session p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.schedule-editor-modal,
+.week-editor-modal {
+  width: min(960px, calc(100vw - 28px));
+  max-height: min(88vh, 900px);
+}
+
+.schedule-editor-modal [data-slot="body"],
+.week-editor-modal [data-slot="body"] {
+  overflow-y: auto;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.65fr) repeat(var(--schedule-slots, 2), minmax(180px, 1fr));
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.week-grid-label {
+  padding: 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.week-grid-row {
+  display: contents;
+}
+
+.week-grid-row > strong {
+  align-self: center;
+  padding: 8px;
+}
+
 @media (max-width: 900px) {
   .form-grid,
   .split-panels,
@@ -759,9 +873,17 @@ body {
   }
 
   .page-header,
-  .table-toolbar {
+  .table-toolbar,
+  .calendar-toolbar,
+  .section-heading,
+  .tree-row > [data-slot="content"] {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .calendar-toolbar .field-stack {
+    width: 100%;
+    margin-inline-start: 0;
   }
 
   .table-toolbar > .field-stack {

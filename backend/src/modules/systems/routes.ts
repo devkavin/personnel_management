@@ -75,7 +75,16 @@ router.get(
       `,
       { code }
     );
-    const stats = Array.isArray(statsRows) ? statsRows[0] : {};
+    const stats = (Array.isArray(statsRows) ? statsRows[0] : {}) as Record<string, unknown>;
+    if (code === "scheduling") {
+      const [schedulingRows] = await pool.query(
+        `SELECT
+           (SELECT COUNT(*) FROM schedule_session_templates WHERE status = 'active') AS sessionTemplates,
+           (SELECT COUNT(*) FROM schedule_week_templates WHERE status = 'active') AS weekTemplates,
+           (SELECT COUNT(*) FROM schedule_plans WHERE status = 'published') AS publishedSchedules`
+      );
+      Object.assign(stats, Array.isArray(schedulingRows) ? schedulingRows[0] : {});
+    }
     response.json({ system, stats });
   })
 );
@@ -210,6 +219,14 @@ router.put(
       `,
       { tenantId, code, enabled: body.enabled }
     );
+
+    if (code === "scheduling" && body.enabled) {
+      await pool.query(
+        `INSERT IGNORE INTO schedule_day_slots (client_id, name, sort_order, created_by_user_id)
+         VALUES (:tenantId, 'Morning', 10, :userId), (:tenantId, 'Evening', 20, :userId)`,
+        { tenantId, userId: request.user!.id }
+      );
+    }
 
     const settingUpdates = [
       ["staff_attendance_enabled", settings.staffAttendanceEnabled],

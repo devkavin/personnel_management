@@ -11,6 +11,7 @@ import { memberGroupsRouter } from "./modules/memberGroups/routes.js";
 import { peopleRouter } from "./modules/people/routes.js";
 import { profileRouter } from "./modules/profile/routes.js";
 import { systemsRouter } from "./modules/systems/routes.js";
+import { schedulingRouter } from "./modules/scheduling/routes.js";
 import { AppError } from "./shared/http.js";
 
 export function createApp() {
@@ -34,6 +35,7 @@ export function createApp() {
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/systems", systemsRouter);
+  app.use("/api/scheduling", schedulingRouter);
 
   app.use((_request, _response, next) => {
     next(new AppError(404, "Route not found"));

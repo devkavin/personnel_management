@@ -21,6 +21,9 @@ const clientSchema = z.object({
   newUserIdentifierLabel: z.string().min(2).default("New User ID"),
   memberGroupSingular: z.string().min(2).default("Class"),
   memberGroupPlural: z.string().min(2).default("Classes"),
+  timezone: z.string().min(1).max(80).default("Asia/Colombo").refine((value) => {
+    try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; }
+  }, "Enter a valid IANA timezone"),
   admin: z
     .object({
       displayName: z.string().min(2),
@@ -51,6 +54,7 @@ const tenantSelect = `
     new_user_identifier_label AS newUserIdentifierLabel,
     member_group_singular AS memberGroupSingular,
     member_group_plural AS memberGroupPlural,
+    timezone,
     status,
     created_at AS createdAt
   FROM clients
@@ -97,6 +101,15 @@ router.get(
         LEFT JOIN tenant_system_settings member
           ON member.client_id = ts.client_id AND member.system_code = ts.system_code AND member.setting_key = 'member_attendance_enabled'
         WHERE ts.client_id = :clientId AND ts.system_code = 'attendance'
+        UNION ALL
+        SELECT
+          s.code,
+          s.name,
+          s.description,
+          COALESCE(ts.enabled, FALSE) AS enabled
+        FROM systems s
+        LEFT JOIN tenant_systems ts ON ts.system_code = s.code AND ts.client_id = :clientId
+        WHERE s.code NOT IN ('attendance') AND s.status = 'active'
         ORDER BY name
       `,
       { clientId: request.user.clientId }
@@ -138,6 +151,7 @@ router.post(
             new_user_identifier_label,
             member_group_singular,
             member_group_plural
+            ,timezone
           )
           VALUES (
             :name,
@@ -152,6 +166,7 @@ router.post(
             :newUserIdentifierLabel,
             :memberGroupSingular,
             :memberGroupPlural
+            ,:timezone
           )
         `,
         body
@@ -170,7 +185,7 @@ router.post(
       await connection.query(
         `
           INSERT INTO tenant_systems (client_id, system_code, enabled)
-          VALUES (:clientId, 'attendance', TRUE)
+          SELECT :clientId, code, code = 'attendance' FROM systems WHERE status = 'active'
         `,
         { clientId }
       );
@@ -247,6 +262,7 @@ router.post(
         newUserIdentifierLabel: body.newUserIdentifierLabel,
         memberGroupSingular: body.memberGroupSingular,
         memberGroupPlural: body.memberGroupPlural,
+        timezone: body.timezone,
         status: "active",
         admin
       });
@@ -281,6 +297,7 @@ router.patch(
           new_user_identifier_label = COALESCE(:newUserIdentifierLabel, new_user_identifier_label),
           member_group_singular = COALESCE(:memberGroupSingular, member_group_singular),
           member_group_plural = COALESCE(:memberGroupPlural, member_group_plural),
+          timezone = COALESCE(:timezone, timezone),
           status = COALESCE(:status, status)
         WHERE id = :id
       `,
@@ -298,6 +315,7 @@ router.patch(
         newUserIdentifierLabel: body.newUserIdentifierLabel ?? null,
         memberGroupSingular: body.memberGroupSingular ?? null,
         memberGroupPlural: body.memberGroupPlural ?? null,
+        timezone: body.timezone ?? null,
         status: body.status ?? null
       }
     );
