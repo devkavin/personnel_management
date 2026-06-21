@@ -99,24 +99,26 @@ router.post(
     );
     if (!Array.isArray(people) || people.length === 0) throw new AppError(404, "Person not found in this client");
 
-    const [result] = await pool.query(
-      `
-        INSERT INTO attendance_records (client_id, person_id, recorded_by_user_id, attendance_date, status, notes)
-        VALUES (:clientId, :personId, :recordedByUserId, :attendanceDate, :status, :notes)
-        ON DUPLICATE KEY UPDATE
-          recorded_by_user_id = VALUES(recorded_by_user_id),
-          status = VALUES(status),
-          notes = VALUES(notes)
-      `,
-      {
-        clientId,
-        personId: body.personId,
-        recordedByUserId: request.user!.id,
-        attendanceDate: body.attendanceDate,
-        status: body.status,
-        notes: body.notes ?? null
-      }
-    );
+    let result: any;
+    try {
+      [result] = await pool.query(
+        `
+          INSERT INTO attendance_records (client_id, person_id, recorded_by_user_id, attendance_date, status, notes)
+          VALUES (:clientId, :personId, :recordedByUserId, :attendanceDate, :status, :notes)
+        `,
+        {
+          clientId,
+          personId: body.personId,
+          recordedByUserId: request.user!.id,
+          attendanceDate: body.attendanceDate,
+          status: body.status,
+          notes: body.notes ?? null
+        }
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "ER_DUP_ENTRY") throw new AppError(409, "Attendance has already been recorded for this person and date");
+      throw error;
+    }
     response.status(201).json({ id: (result as any).insertId, message: "Attendance recorded" });
   })
 );

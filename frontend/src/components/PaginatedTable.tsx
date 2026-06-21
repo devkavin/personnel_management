@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Search, X } from "lucide-react";
+import { Button, Pagination, SearchField, Table } from "@heroui/react";
 import { SearchableSelect } from "./SearchableSelect";
 
 export interface PaginatedTableColumn<T> {
@@ -36,6 +36,7 @@ export function PaginatedTable<T>({
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const searchInputId = useId();
   const normalizedSearchTerm = searchTerm.toLowerCase();
 
   const filteredRows = useMemo(() => {
@@ -72,34 +73,31 @@ export function PaginatedTable<T>({
     <div className="data-table">
       <div className="table-toolbar">
         {searchable ? (
-          <div
-            className="table-search"
-          >
-            <label htmlFor="table-search-input">Search</label>
-            <div className="table-search-control">
-              <Search size={16} aria-hidden="true" />
-              <input
-                id="table-search-input"
-                type="search"
-                value={searchInput}
+          <div className="table-search" data-ignore-dirty="true">
+            <label htmlFor={searchInputId}>Search</label>
+            <SearchField className="table-search-control" value={searchInput} onChange={setSearchInput}>
+              <SearchField.Group>
+                <SearchField.SearchIcon />
+                <SearchField.Input
+                id={searchInputId}
                 placeholder={searchPlaceholder}
-                onChange={(event) => setSearchInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
                     applySearch();
                   }
                 }}
-              />
+                />
               {searchTerm ? (
-                <button className="table-clear-button" type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search">
-                  <X size={15} />
-                </button>
+                <Button className="table-clear-button" variant="ghost" size="sm" isIconOnly type="button" onClick={clearSearch} aria-label="Clear search">
+                  Clear
+                </Button>
               ) : null}
-              <button className="table-search-button" type="submit">
+              <Button className="table-search-button" variant="primary" size="sm" type="button" onClick={applySearch}>
                 Search
-              </button>
-            </div>
+              </Button>
+              </SearchField.Group>
+            </SearchField>
           </div>
         ) : null}
         <div className="table-toolbar-actions">
@@ -111,52 +109,54 @@ export function PaginatedTable<T>({
           />
         </div>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th className={column.className} key={column.header}>
+      <Table className="hero-data-table" aria-label="Data table">
+        <Table.ScrollContainer>
+          <Table.Content>
+            <Table.Header>
+              {columns.map((column, index) => (
+                <Table.Column className={column.className} isRowHeader={index === 0} key={column.header}>
                   {column.header}
-                </th>
+                </Table.Column>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pagedRows.map((row) => (
-              <tr key={getRowKey(row)}>
-                {columns.map((column) => (
-                  <td className={column.className} key={column.header}>
-                    {column.render(row)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length}>{rows.length === 0 ? emptyMessage : "No matching records found."}</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-      <div className="pagination-bar">
-        <span>
+            </Table.Header>
+            <Table.Body>
+              {pagedRows.map((row) => (
+                <Table.Row id={String(getRowKey(row))} key={getRowKey(row)}>
+                  {columns.map((column) => (
+                    <Table.Cell className={column.className} key={column.header}>
+                      {column.render(row)}
+                    </Table.Cell>
+                  ))}
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Content>
+        </Table.ScrollContainer>
+      </Table>
+      {filteredRows.length === 0 ? <div className="empty-state compact">{rows.length === 0 ? emptyMessage : "No matching records found."}</div> : null}
+      <Pagination className="pagination-bar" size="sm" aria-label="Table pagination">
+        <Pagination.Summary>
           Showing {filteredRows.length === 0 ? 0 : (safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, filteredRows.length)} of{" "}
           {filteredRows.length}
-        </span>
-        <div>
-          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={safePage === 1}>
+        </Pagination.Summary>
+        <Pagination.Content>
+          <Pagination.Item>
+            <Pagination.Previous type="button" onPress={() => setPage((current) => Math.max(1, current - 1))} isDisabled={safePage === 1}>
             Previous
-          </button>
-          <span>
+            </Pagination.Previous>
+          </Pagination.Item>
+          <Pagination.Item>
+            <Pagination.Link isActive type="button">
             Page {safePage} of {totalPages}
-          </span>
-          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={safePage === totalPages}>
+            </Pagination.Link>
+          </Pagination.Item>
+          <Pagination.Item>
+            <Pagination.Next type="button" onPress={() => setPage((current) => Math.min(totalPages, current + 1))} isDisabled={safePage === totalPages}>
             Next
-          </button>
-        </div>
-      </div>
+            </Pagination.Next>
+          </Pagination.Item>
+        </Pagination.Content>
+      </Pagination>
     </div>
   );
 }

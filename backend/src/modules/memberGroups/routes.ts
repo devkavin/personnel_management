@@ -78,17 +78,16 @@ router.get(
           mg.created_by_user_id AS createdByUserId,
           creator.display_name AS createdByName,
           COUNT(mgm.user_id) AS memberCount,
-          COALESCE(JSON_ARRAYAGG(
-            CASE
-              WHEN member.id IS NULL THEN NULL
-              ELSE JSON_OBJECT('id', member.id, 'displayName', member.display_name)
-            END
+          COALESCE((
+            SELECT JSON_ARRAYAGG(JSON_OBJECT('id', group_member.id, 'displayName', group_member.display_name))
+            FROM member_group_members group_members
+            INNER JOIN users group_member ON group_member.id = group_members.user_id
+            WHERE group_members.member_group_id = mg.id
           ), JSON_ARRAY()) AS members,
           mg.created_at AS createdAt
         FROM member_groups mg
         INNER JOIN users creator ON creator.id = mg.created_by_user_id
         LEFT JOIN member_group_members mgm ON mgm.member_group_id = mg.id
-        LEFT JOIN users member ON member.id = mgm.user_id
         WHERE mg.client_id = :clientId
         GROUP BY mg.id, creator.display_name
         ORDER BY mg.name

@@ -1,16 +1,11 @@
-import Select, { type MultiValue, type StylesConfig } from "react-select";
+import { Button, Checkbox, Input, Popover } from "@heroui/react";
+import { ChevronDown, Search, X } from "lucide-react";
+import { useMemo, useState } from "react";
 
 interface SearchableMultiSelectOption {
   id: number;
   label: string;
   meta?: string;
-}
-
-interface SelectOption {
-  id: number;
-  label: string;
-  meta?: string;
-  value: number;
 }
 
 interface SearchableMultiSelectProps {
@@ -22,57 +17,6 @@ interface SearchableMultiSelectProps {
   selectAllLabel?: string;
 }
 
-const multiSelectStyles: StylesConfig<SelectOption, true> = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: 44,
-    borderColor: state.isFocused ? "#0f766e" : "#cbd5e1",
-    borderRadius: 8,
-    backgroundColor: "#f8fafc",
-    boxShadow: state.isFocused ? "0 0 0 4px rgba(15, 118, 110, 0.14)" : "none",
-    ":hover": {
-      borderColor: state.isFocused ? "#0f766e" : "#94a3b8"
-    }
-  }),
-  menu: (base) => ({
-    ...base,
-    zIndex: 30,
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.14)",
-    overflow: "hidden"
-  }),
-  multiValue: (base) => ({
-    ...base,
-    border: "1px solid #ccfbf1",
-    borderRadius: 8,
-    backgroundColor: "#f0fdfa"
-  }),
-  multiValueLabel: (base) => ({
-    ...base,
-    color: "#115e59",
-    fontWeight: 800
-  }),
-  option: (base, state) => ({
-    ...base,
-    color: "#1f2933",
-    backgroundColor: state.isSelected ? "#ccfbf1" : state.isFocused ? "#f0fdfa" : "#ffffff",
-    fontWeight: state.isSelected ? 800 : 650,
-    ":active": {
-      backgroundColor: "#ccfbf1"
-    }
-  })
-};
-
-function formatOptionLabel(option: SelectOption) {
-  return (
-    <span className="react-select-option">
-      <strong>{option.label}</strong>
-      {option.meta ? <small>{option.meta}</small> : null}
-    </span>
-  );
-}
-
 export function SearchableMultiSelect({
   label,
   onChange,
@@ -81,36 +25,75 @@ export function SearchableMultiSelect({
   selectedIds,
   selectAllLabel = "Select all"
 }: SearchableMultiSelectProps) {
-  const selectOptions = options.map((option) => ({ ...option, value: option.id }));
-  const selectedOptions = selectOptions.filter((option) => selectedIds.includes(option.id));
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedOptions = options.filter((option) => selectedIds.includes(option.id));
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return options;
+    return options.filter((option) => `${option.label} ${option.meta ?? ""}`.toLowerCase().includes(normalizedQuery));
+  }, [options, query]);
 
-  function handleChange(nextOptions: MultiValue<SelectOption>) {
-    onChange(nextOptions.map((option) => option.id));
+  function toggleOption(optionId: number) {
+    onChange(selectedIds.includes(optionId) ? selectedIds.filter((id) => id !== optionId) : [...selectedIds, optionId]);
   }
 
   return (
-    <div className="multi-select">
+    <div className="multi-select hero-multi-select" data-ignore-dirty="true">
       <span className="multi-select-label">{label}</span>
-      <Select<SelectOption, true>
-        classNamePrefix="react-select"
-        closeMenuOnSelect={false}
-        formatOptionLabel={formatOptionLabel}
-        isMulti
-        isSearchable
-        onChange={handleChange}
-        options={selectOptions}
-        placeholder={placeholder}
-        styles={multiSelectStyles}
-        value={selectedOptions}
-      />
-      {options.length > 0 ? (
-        <div className="multi-select-menu-actions inline">
-          <button type="button" onClick={() => onChange(options.map((option) => option.id))}>
-            {selectAllLabel}
-          </button>
-          <button type="button" onClick={() => onChange([])}>
-            Clear
-          </button>
+      <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Popover.Trigger>
+          <Button className="multi-select-trigger hero-multi-select-trigger" variant="outline" type="button" onClick={(event) => event.stopPropagation()}>
+            <span>{selectedOptions.length > 0 ? `${selectedOptions.length} selected` : placeholder}</span>
+            <ChevronDown size={16} />
+          </Button>
+        </Popover.Trigger>
+        <Popover.Content className="multi-select-menu hero-multi-select-menu">
+          <div className="multi-select-search">
+            <Search size={16} aria-hidden="true" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search..." />
+            {query ? (
+              <Button variant="ghost" size="sm" isIconOnly type="button" onPress={() => setQuery("")} aria-label="Clear multi-select search">
+                <X size={15} />
+              </Button>
+            ) : null}
+          </div>
+          <div className="multi-select-menu-actions">
+            <Button size="sm" variant="outline" type="button" onPress={() => onChange(options.map((option) => option.id))}>
+              {selectAllLabel}
+            </Button>
+            <Button size="sm" variant="ghost" type="button" onPress={() => onChange([])}>
+              Clear
+            </Button>
+          </div>
+          <div className="multi-select-options">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((option) => (
+                <Button className={selectedIds.includes(option.id) ? "selected" : ""} variant="ghost" type="button" onPress={() => toggleOption(option.id)} key={option.id}>
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.meta ? <small>{option.meta}</small> : null}
+                  </span>
+                  <Checkbox isSelected={selectedIds.includes(option.id)} aria-label={`Select ${option.label}`} />
+                </Button>
+              ))
+            ) : (
+              <div className="multi-select-empty">No matching options.</div>
+            )}
+          </div>
+        </Popover.Content>
+      </Popover>
+      {selectedOptions.length > 0 ? (
+        <div className="multi-select-chips">
+          {selectedOptions.slice(0, 8).map((option) => (
+            <span key={option.id}>
+              {option.label}
+              <Button variant="ghost" size="sm" isIconOnly type="button" onPress={() => toggleOption(option.id)} aria-label={`Remove ${option.label}`}>
+                <X size={13} />
+              </Button>
+            </span>
+          ))}
+          {selectedOptions.length > 8 ? <span>+{selectedOptions.length - 8}</span> : null}
         </div>
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { Button } from "@heroui/react";
 
 interface SidebarGroupItem {
   active: boolean;
@@ -22,18 +23,18 @@ export function SidebarGroup({ defaultOpen = true, icon, isActive, items, label 
 
   return (
     <>
-      <button className={`nav-parent ${isActive ? "active" : ""}`} type="button" onClick={() => setIsOpen((current) => !current)} aria-expanded={isOpen}>
+      <Button className={`nav-parent ${isActive ? "active" : ""}`} variant="ghost" type="button" onClick={() => setIsOpen((current) => !current)} aria-expanded={isOpen}>
         {icon}
         <span>{label}</span>
         {isOpen ? <ChevronDown className="nav-caret" size={16} /> : <ChevronRight className="nav-caret" size={16} />}
-      </button>
+      </Button>
       {isOpen ? (
         <div className="nav-submenu">
           {items.map((item) => (
-            <button className={item.active ? "active" : ""} type="button" onClick={item.onClick} key={item.label}>
+            <Button className={item.active ? "active" : ""} variant="ghost" type="button" onClick={item.onClick} key={item.label}>
               {item.icon}
               {item.label}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

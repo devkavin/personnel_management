@@ -1,4 +1,5 @@
-import Select, { type SingleValue, type StylesConfig } from "react-select";
+import { Autocomplete, Input, ListBox } from "@heroui/react";
+import type { Key } from "react";
 
 export interface SearchableSelectOption {
   label: string;
@@ -15,67 +16,45 @@ interface SearchableSelectProps {
   value: string;
 }
 
-const selectStyles: StylesConfig<SearchableSelectOption, false> = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: 44,
-    borderColor: state.isFocused ? "#0f766e" : "#cbd5e1",
-    borderRadius: 8,
-    backgroundColor: "#f8fafc",
-    boxShadow: state.isFocused ? "0 0 0 4px rgba(15, 118, 110, 0.14)" : "none",
-    ":hover": {
-      borderColor: state.isFocused ? "#0f766e" : "#94a3b8"
-    }
-  }),
-  menu: (base) => ({
-    ...base,
-    zIndex: 30,
-    border: "1px solid #cbd5e1",
-    borderRadius: 8,
-    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.14)",
-    overflow: "hidden"
-  }),
-  option: (base, state) => ({
-    ...base,
-    color: "#1f2933",
-    backgroundColor: state.isSelected ? "#ccfbf1" : state.isFocused ? "#f0fdfa" : "#ffffff",
-    fontWeight: state.isSelected ? 800 : 650,
-    ":active": {
-      backgroundColor: "#ccfbf1"
-    }
-  })
-};
-
-function formatOptionLabel(option: SearchableSelectOption) {
-  return (
-    <span className="react-select-option">
-      <strong>{option.label}</strong>
-      {option.meta ? <small>{option.meta}</small> : null}
-    </span>
-  );
-}
-
 export function SearchableSelect({ disabled = false, label, onChange, options, placeholder = "Select option", value }: SearchableSelectProps) {
-  const selectedOption = options.find((option) => option.value === value) ?? null;
+  const selectedOption = options.find((option) => option.value === value);
 
-  function handleChange(option: SingleValue<SearchableSelectOption>) {
-    onChange(option?.value ?? "");
+  function handleSelectionChange(key: Key | null) {
+    onChange(key?.toString() ?? "");
   }
 
   return (
-    <label className="searchable-select">
+    <div className="searchable-select hero-select-field" data-ignore-dirty="true">
       {label ? <span className="multi-select-label">{label}</span> : null}
-      <Select<SearchableSelectOption, false>
-        classNamePrefix="react-select"
-        formatOptionLabel={formatOptionLabel}
+      <Autocomplete
+        className="hero-autocomplete"
+        fullWidth
         isDisabled={disabled}
-        isSearchable
-        onChange={handleChange}
-        options={options}
-        placeholder={placeholder}
-        styles={selectStyles}
-        value={selectedOption}
-      />
-    </label>
+        selectedKey={value || null}
+        onSelectionChange={handleSelectionChange}
+        onClear={() => onChange("")}
+      >
+        <Autocomplete.Trigger onClick={(event) => event.stopPropagation()}>
+          <Autocomplete.Value>{selectedOption?.label || placeholder}</Autocomplete.Value>
+          <Autocomplete.ClearButton type="button" />
+          <Autocomplete.Indicator />
+        </Autocomplete.Trigger>
+        <Autocomplete.Popover className="hero-select-popover">
+          <Autocomplete.Filter>
+            <Input className="hero-autocomplete-filter" placeholder="Search..." />
+          </Autocomplete.Filter>
+          <ListBox items={options} className="hero-select-listbox" aria-label={label || placeholder}>
+            {(option) => (
+              <ListBox.Item id={option.value} textValue={option.label}>
+                <span className="hero-select-option">
+                  <strong>{option.label}</strong>
+                  {option.meta ? <small>{option.meta}</small> : null}
+                </span>
+              </ListBox.Item>
+            )}
+          </ListBox>
+        </Autocomplete.Popover>
+      </Autocomplete>
+    </div>
   );
 }

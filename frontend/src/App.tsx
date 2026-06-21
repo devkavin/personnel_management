@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { Button, Card, Checkbox, Chip, Drawer, Input, Popover, TextArea, useOverlayState } from "@heroui/react";
 import {
   Activity,
   BadgeCheck,
@@ -12,19 +13,22 @@ import {
   LayoutDashboard,
   Loader2,
   LockKeyhole,
+  Menu,
   Pencil,
   LogOut,
+  Moon,
   Power,
   Plus,
   Save,
   Settings,
   ShieldCheck,
+  Sparkles,
+  Sun,
   UserCog,
   UserRound,
   UsersRound
 } from "lucide-react";
-import { ActionIconButton } from "./components/ActionIconButton";
-import { ManagementPage } from "./components/ManagementPage";
+import { DatePickerField } from "./components/DatePickerField";
 import { PaginatedTable, type PaginatedTableColumn } from "./components/PaginatedTable";
 import { SearchableMultiSelect } from "./components/SearchableMultiSelect";
 import { SearchableSelect, type SearchableSelectOption } from "./components/SearchableSelect";
@@ -45,8 +49,6 @@ import {
 } from "./lib/api";
 
 const SESSION_KEY = "personnel_management_session";
-const SAVE_CONFIRMATION_MESSAGE = "Save these changes?";
-const DISCARD_CONFIRMATION_MESSAGE = "You have unsaved changes. Discard them?";
 
 interface Session {
   token: string;
@@ -180,12 +182,34 @@ const attendanceStatusOptions: SearchableSelectOption[] = [
   { label: "Excused", value: "excused" }
 ];
 
+type ThemeMode = "light" | "dark" | "slate" | "emerald" | "amber" | "contrast";
+type SurfaceMode = "solid" | "glass";
+
+const themeOptions: Array<{ icon: ReactNode; label: string; value: ThemeMode }> = [
+  { icon: <Sun size={17} />, label: "Light", value: "light" },
+  { icon: <Moon size={17} />, label: "Dark", value: "dark" },
+  { icon: <ShieldCheck size={17} />, label: "Slate", value: "slate" },
+  { icon: <BadgeCheck size={17} />, label: "Emerald", value: "emerald" },
+  { icon: <Activity size={17} />, label: "Amber", value: "amber" },
+  { icon: <CircleAlert size={17} />, label: "High contrast", value: "contrast" }
+];
+
+function readThemeMode(): ThemeMode {
+  const value = localStorage.getItem("ui-theme-mode");
+  if (value === "dark" || value === "slate" || value === "emerald" || value === "amber" || value === "contrast") return value;
+  return "light";
+}
+
+function themeModeLabel(themeMode: ThemeMode) {
+  return themeOptions.find((option) => option.value === themeMode)?.label ?? "Light";
+}
+
 function confirmSaveChanges() {
-  return window.confirm(SAVE_CONFIRMATION_MESSAGE);
+  return true;
 }
 
 function confirmDiscardChanges() {
-  return window.confirm(DISCARD_CONFIRMATION_MESSAGE);
+  return true;
 }
 
 function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
@@ -236,12 +260,12 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
         <form onSubmit={handleSubmit} className="login-form">
           <label>
             Email or User ID
-            <input value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required />
+            <Input value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required />
           </label>
 
           <label>
             Password
-            <input
+            <Input
               type="password"
               value={password}
               autoComplete="current-password"
@@ -250,10 +274,10 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
             />
           </label>
 
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
+          <Button className="primary-button" variant="primary" type="submit" isDisabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="spin" size={18} /> : <LockKeyhole size={18} />}
             Sign in
-          </button>
+          </Button>
         </form>
       </section>
     </main>
@@ -327,28 +351,28 @@ function OnboardingPage({ session, onComplete }: { session: Session; onComplete:
         <form onSubmit={handleSubmit} className="login-form">
           <label>
             {tenant?.userIdentifierLabel || "User ID"}
-            <input value={session.user.userIdentifier || session.user.newUserIdentifier || ""} readOnly />
+            <Input value={session.user.userIdentifier || session.user.newUserIdentifier || ""} readOnly />
           </label>
           <label>
             Display name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
           </label>
           <label>
             Email optional
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
           </label>
           <label>
             New password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
+            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
           </label>
           <label>
             Confirm password
-            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
+            <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
           </label>
-          <button className="primary-button" type="submit" disabled={isSaving || password !== confirmPassword}>
+          <Button className="primary-button" variant="primary" type="submit" isDisabled={isSaving || password !== confirmPassword}>
             {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
             Finish setup
-          </button>
+          </Button>
         </form>
       </section>
     </main>
@@ -370,6 +394,82 @@ function RequiredLabel({ children }: { children: ReactNode }) {
       {children}
       <span aria-hidden="true">*</span>
     </span>
+  );
+}
+
+function ThemePopover({
+  surfaceMode,
+  themeMode,
+  onSurfaceModeChange,
+  onThemeModeChange
+}: {
+  surfaceMode: SurfaceMode;
+  themeMode: ThemeMode;
+  onSurfaceModeChange: (mode: SurfaceMode) => void;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="theme-popover" data-ignore-dirty="true" data-open={isOpen ? "true" : "false"}>
+      <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Popover.Trigger>
+          <Button
+            className={`theme-popover-trigger ${isOpen ? "active" : ""}`}
+            variant="outline"
+            type="button"
+            aria-expanded={isOpen}
+            aria-haspopup="dialog"
+          >
+            <Settings size={18} />
+            Theme
+          </Button>
+        </Popover.Trigger>
+        <Popover.Content className="theme-popover-content" placement="bottom end">
+          <Popover.Dialog className="theme-popover-panel">
+            <div className="theme-popover-header">
+              <div>
+                <p className="eyebrow">Theme</p>
+                <Popover.Heading>Display preferences</Popover.Heading>
+              </div>
+              <Button className="theme-done-button" variant="primary" size="sm" type="button" onPress={() => setIsOpen(false)}>
+                Done
+              </Button>
+            </div>
+
+            <div className="theme-popover-body">
+              <div className="theme-choice-grid" aria-label="Color theme">
+                {themeOptions.map((option) => (
+                  <Button className={themeMode === option.value ? "active" : ""} variant="outline" type="button" onPress={() => onThemeModeChange(option.value)} key={option.value}>
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </Button>
+                ))}
+              </div>
+
+              <div className="theme-choice-group" aria-label="Surface mode">
+                <Button className={surfaceMode === "solid" ? "active" : ""} variant="outline" type="button" onPress={() => onSurfaceModeChange("solid")}>
+                  <ShieldCheck size={17} />
+                  <span>Solid</span>
+                </Button>
+                <Button className={surfaceMode === "glass" ? "active" : ""} variant="outline" type="button" onPress={() => onSurfaceModeChange("glass")}>
+                  <Sparkles size={17} />
+                  <span>Glass</span>
+                </Button>
+              </div>
+            </div>
+          </Popover.Dialog>
+        </Popover.Content>
+      </Popover>
+    </div>
+  );
+}
+
+function StatusChip({ className = "", children }: { className?: string; children: ReactNode }) {
+  return (
+    <Chip className={`status-pill ${className}`} variant="soft" size="sm">
+      {children}
+    </Chip>
   );
 }
 
@@ -411,9 +511,9 @@ function SystemDashboard({ dashboard, onOpenTenants }: { dashboard: DashboardRes
           <h2>Tenant operations</h2>
         </div>
         <div className="action-list">
-          <button type="button" onClick={onOpenTenants}>
+          <Button type="button" onClick={onOpenTenants}>
             <Building2 size={18} /> Manage tenants
-          </button>
+          </Button>
         </div>
       </section>
     </>
@@ -456,16 +556,16 @@ function TenantAdminDashboard({
           <h2>Manage people and systems</h2>
         </div>
         <div className="action-list">
-          <button type="button" onClick={onCreateUser}>
+          <Button type="button" onClick={onCreateUser}>
             <Plus size={18} /> Onboard user
-          </button>
-          <button type="button" onClick={onOpenUsers}>
+          </Button>
+          <Button type="button" onClick={onOpenUsers}>
             <UsersRound size={18} /> Manage users
-          </button>
+          </Button>
           {onOpenAttendance ? (
-            <button type="button" onClick={onOpenAttendance}>
+            <Button type="button" onClick={onOpenAttendance}>
               <ClipboardCheck size={18} /> Attendance reports
-            </button>
+            </Button>
           ) : null}
         </div>
       </section>
@@ -508,14 +608,14 @@ function StaffDashboard({
         </div>
         <div className="action-list">
           {onMarkAttendance ? (
-            <button className="primary-action-button" type="button" onClick={onMarkAttendance}>
+            <Button className="primary-action-button" variant="primary" type="button" onClick={onMarkAttendance}>
               <ClipboardCheck size={18} /> Mark attendance
-            </button>
+            </Button>
           ) : null}
           {onOpenDailyAttendance ? (
-            <button type="button" onClick={onOpenDailyAttendance}>
+            <Button type="button" onClick={onOpenDailyAttendance}>
               <CalendarDays size={18} /> Daily attendance
-            </button>
+            </Button>
           ) : null}
         </div>
       </section>
@@ -633,91 +733,91 @@ function TenantRegister({ token }: { token: string }) {
           <div className="form-row">
             <label>
               <RequiredLabel>Tenant name</RequiredLabel>
-              <input value={tenantName} onChange={(event) => handleTenantName(event.target.value)} required />
+              <Input value={tenantName} onChange={(event) => handleTenantName(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>Tenant slug</RequiredLabel>
-              <input value={tenantSlug} onChange={(event) => setTenantSlug(slugify(event.target.value))} required />
+              <Input value={tenantSlug} onChange={(event) => setTenantSlug(slugify(event.target.value))} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>General person label</RequiredLabel>
-              <input value={personSingular} onChange={(event) => setPersonSingular(event.target.value)} required />
+              <Input value={personSingular} onChange={(event) => setPersonSingular(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>General plural label</RequiredLabel>
-              <input value={personPlural} onChange={(event) => setPersonPlural(event.target.value)} required />
+              <Input value={personPlural} onChange={(event) => setPersonPlural(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>Staff label</RequiredLabel>
-              <input value={staffSingular} onChange={(event) => setStaffSingular(event.target.value)} required />
+              <Input value={staffSingular} onChange={(event) => setStaffSingular(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>Staff plural label</RequiredLabel>
-              <input value={staffPlural} onChange={(event) => setStaffPlural(event.target.value)} required />
+              <Input value={staffPlural} onChange={(event) => setStaffPlural(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>Member label</RequiredLabel>
-              <input value={memberSingular} onChange={(event) => setMemberSingular(event.target.value)} required />
+              <Input value={memberSingular} onChange={(event) => setMemberSingular(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>Member plural label</RequiredLabel>
-              <input value={memberPlural} onChange={(event) => setMemberPlural(event.target.value)} required />
+              <Input value={memberPlural} onChange={(event) => setMemberPlural(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>User ID label</RequiredLabel>
-              <input value={userIdentifierLabel} onChange={(event) => setUserIdentifierLabel(event.target.value)} required />
+              <Input value={userIdentifierLabel} onChange={(event) => setUserIdentifierLabel(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>New User ID label</RequiredLabel>
-              <input value={newUserIdentifierLabel} onChange={(event) => setNewUserIdentifierLabel(event.target.value)} required />
+              <Input value={newUserIdentifierLabel} onChange={(event) => setNewUserIdentifierLabel(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>Member group label</RequiredLabel>
-              <input value={memberGroupSingular} onChange={(event) => setMemberGroupSingular(event.target.value)} required />
+              <Input value={memberGroupSingular} onChange={(event) => setMemberGroupSingular(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>Member group plural label</RequiredLabel>
-              <input value={memberGroupPlural} onChange={(event) => setMemberGroupPlural(event.target.value)} required />
+              <Input value={memberGroupPlural} onChange={(event) => setMemberGroupPlural(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               <RequiredLabel>Admin name</RequiredLabel>
-              <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required />
+              <Input value={adminName} onChange={(event) => setAdminName(event.target.value)} required />
             </label>
             <label>
               <RequiredLabel>Admin email</RequiredLabel>
-              <input type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} required />
+              <Input type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} required />
             </label>
           </div>
           <div className="form-row">
             <label>
               {userIdentifierLabel}
-              <input value={adminUserIdentifier} onChange={(event) => setAdminUserIdentifier(normalizeIdentifierInput(event.target.value))} />
+              <Input value={adminUserIdentifier} onChange={(event) => setAdminUserIdentifier(normalizeIdentifierInput(event.target.value))} />
             </label>
             <label>
               {newUserIdentifierLabel}
-              <input value={adminNewUserIdentifier} onChange={(event) => setAdminNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
+              <Input value={adminNewUserIdentifier} onChange={(event) => setAdminNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
             </label>
           </div>
           <label>
             <RequiredLabel>Temporary password</RequiredLabel>
-            <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} required />
+            <Input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} required />
           </label>
-          <button className="primary-button fit" type="submit" disabled={isSubmitting}>
+          <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
             Create tenant
-          </button>
+          </Button>
         </form>
       </section>
 
@@ -866,28 +966,30 @@ function ManageTenants({ token }: { token: string }) {
     },
     {
       header: "Status",
-      render: (tenant) => <span className="status-pill">{tenant.status}</span>
+      render: (tenant) => <StatusChip>{tenant.status}</StatusChip>
     },
     {
       header: "Actions",
       render: (tenant) => (
         <div className="table-actions">
-          <ActionIconButton label={`View ${tenant.name}`} title="View tenant" onClick={() => openView(tenant)}>
+          <Button className="hero-icon-button" variant="ghost" isIconOnly aria-label={`View ${tenant.name}`} onPress={() => openView(tenant)}>
             <Eye size={16} />
-          </ActionIconButton>
-          <ActionIconButton label={`Edit ${tenant.name}`} title="Edit tenant" onClick={() => openEdit(tenant)}>
+          </Button>
+          <Button className="hero-icon-button" variant="ghost" isIconOnly aria-label={`Edit ${tenant.name}`} onPress={() => openEdit(tenant)}>
             <Pencil size={16} />
-          </ActionIconButton>
-          <ActionIconButton label={`Configure ${tenant.name}`} title="Tenant settings" onClick={() => openSettings(tenant)}>
+          </Button>
+          <Button className="hero-icon-button" variant="ghost" isIconOnly aria-label={`Configure ${tenant.name}`} onPress={() => openSettings(tenant)}>
             <Settings size={16} />
-          </ActionIconButton>
-          <ActionIconButton
-            label={`${tenant.status === "active" ? "Deactivate" : "Reactivate"} ${tenant.name}`}
-            title={tenant.status === "active" ? "Deactivate tenant" : "Reactivate tenant"}
-            onClick={() => handleStatusChange(tenant, tenant.status === "active" ? "inactive" : "active")}
+          </Button>
+          <Button
+            className="hero-icon-button"
+            variant="ghost"
+            isIconOnly
+            aria-label={`${tenant.status === "active" ? "Deactivate" : "Reactivate"} ${tenant.name}`}
+            onPress={() => handleStatusChange(tenant, tenant.status === "active" ? "inactive" : "active")}
           >
             <Power size={16} />
-          </ActionIconButton>
+          </Button>
         </div>
       )
     }
@@ -905,7 +1007,7 @@ function ManageTenants({ token }: { token: string }) {
               <p className="eyebrow">{action === "view" ? "Tenant details" : action === "edit" ? "Edit tenant" : "Tenant settings"}</p>
               <h2>{selectedTenant.name}</h2>
             </div>
-            <button className="secondary-button" type="button" onClick={() => (confirmDiscardChanges() ? setAction(null) : undefined)}>Close</button>
+            <Button className="secondary-button" type="button" onClick={() => (confirmDiscardChanges() ? setAction(null) : undefined)}>Close</Button>
           </div>
 
           {action === "view" ? (
@@ -924,24 +1026,24 @@ function ManageTenants({ token }: { token: string }) {
           {action === "edit" && editForm ? (
             <form className="stack-form" onSubmit={handleEditSubmit}>
               <div className="form-row">
-                <label>Name<input value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} required /></label>
-                <label>Slug<input value={editForm.slug} onChange={(event) => setEditForm({ ...editForm, slug: slugify(event.target.value) })} required /></label>
+                <label>Name<Input value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} required /></label>
+                <label>Slug<Input value={editForm.slug} onChange={(event) => setEditForm({ ...editForm, slug: slugify(event.target.value) })} required /></label>
               </div>
               <div className="form-row">
-                <label>Staff label<input value={editForm.staffSingular} onChange={(event) => setEditForm({ ...editForm, staffSingular: event.target.value })} required /></label>
-                <label>Staff plural label<input value={editForm.staffPlural} onChange={(event) => setEditForm({ ...editForm, staffPlural: event.target.value })} required /></label>
+                <label>Staff label<Input value={editForm.staffSingular} onChange={(event) => setEditForm({ ...editForm, staffSingular: event.target.value })} required /></label>
+                <label>Staff plural label<Input value={editForm.staffPlural} onChange={(event) => setEditForm({ ...editForm, staffPlural: event.target.value })} required /></label>
               </div>
               <div className="form-row">
-                <label>Member label<input value={editForm.memberSingular} onChange={(event) => setEditForm({ ...editForm, memberSingular: event.target.value })} required /></label>
-                <label>Member plural label<input value={editForm.memberPlural} onChange={(event) => setEditForm({ ...editForm, memberPlural: event.target.value })} required /></label>
+                <label>Member label<Input value={editForm.memberSingular} onChange={(event) => setEditForm({ ...editForm, memberSingular: event.target.value })} required /></label>
+                <label>Member plural label<Input value={editForm.memberPlural} onChange={(event) => setEditForm({ ...editForm, memberPlural: event.target.value })} required /></label>
               </div>
               <div className="form-row">
-                <label>User ID label<input value={editForm.userIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, userIdentifierLabel: event.target.value })} required /></label>
-                <label>New User ID label<input value={editForm.newUserIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, newUserIdentifierLabel: event.target.value })} required /></label>
+                <label>User ID label<Input value={editForm.userIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, userIdentifierLabel: event.target.value })} required /></label>
+                <label>New User ID label<Input value={editForm.newUserIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, newUserIdentifierLabel: event.target.value })} required /></label>
               </div>
               <div className="form-row">
-                <label>Member group label<input value={editForm.memberGroupSingular} onChange={(event) => setEditForm({ ...editForm, memberGroupSingular: event.target.value })} required /></label>
-                <label>Member group plural label<input value={editForm.memberGroupPlural} onChange={(event) => setEditForm({ ...editForm, memberGroupPlural: event.target.value })} required /></label>
+                <label>Member group label<Input value={editForm.memberGroupSingular} onChange={(event) => setEditForm({ ...editForm, memberGroupSingular: event.target.value })} required /></label>
+                <label>Member group plural label<Input value={editForm.memberGroupPlural} onChange={(event) => setEditForm({ ...editForm, memberGroupPlural: event.target.value })} required /></label>
               </div>
               <SearchableSelect
                 label="Status"
@@ -949,10 +1051,10 @@ function ManageTenants({ token }: { token: string }) {
                 onChange={(value) => setEditForm({ ...editForm, status: value as Tenant["status"] })}
                 options={statusOptions}
               />
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
+              <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
                 {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
                 Save tenant
-              </button>
+              </Button>
             </form>
           ) : null}
 
@@ -964,7 +1066,7 @@ function ManageTenants({ token }: { token: string }) {
                     <strong>{feature.name}</strong>
                     <small>{feature.description}</small>
                   </span>
-                  <input
+                  <Input
                     type="checkbox"
                     checked={Boolean(feature.enabled)}
                     onChange={(event) =>
@@ -975,21 +1077,29 @@ function ManageTenants({ token }: { token: string }) {
                   />
                 </label>
               ))}
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
+              <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
                 {isSaving ? <Loader2 className="spin" size={18} /> : <Settings size={18} />}
                 Save settings
-              </button>
+              </Button>
             </form>
           ) : null}
         </section>
       ) : null}
 
-      <ManagementPage eyebrow="Tenants" title="Manage tenants">
+      <Card className="panel">
+        <Card.Header className="panel-header">
+          <div>
+            <p className="eyebrow">Tenants</p>
+            <h2>Manage tenants</h2>
+          </div>
+        </Card.Header>
+        <Card.Content>
         {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading tenants</div> : null}
         {!isLoading ? (
           <PaginatedTable columns={tenantColumns} emptyMessage="No tenants found." getRowKey={(tenant) => tenant.id} rows={tenants} />
         ) : null}
-      </ManagementPage>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
@@ -1036,12 +1146,12 @@ function SystemDashboardPage({
               <h2>{dashboard.system.name}</h2>
             </div>
             <div className="action-list">
-              <button type="button" onClick={onOpenSystemSettings}>
+              <Button type="button" onClick={onOpenSystemSettings}>
                 <Settings size={18} /> System Settings
-              </button>
-              <button type="button" onClick={onOpenTenantSettings}>
+              </Button>
+              <Button type="button" onClick={onOpenTenantSettings}>
                 <Building2 size={18} /> Tenant Level Settings
-              </button>
+              </Button>
             </div>
           </section>
         </>
@@ -1105,14 +1215,21 @@ function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: 
     <div className="page-stack">
       {message ? <Alert tone="success" message={message} /> : null}
       {error ? <Alert message={error} /> : null}
-      <ManagementPage eyebrow={system?.name || "System"} title="System Settings">
+      <Card className="panel">
+        <Card.Header className="panel-header">
+          <div>
+            <p className="eyebrow">{system?.name || "System"}</p>
+            <h2>System Settings</h2>
+          </div>
+        </Card.Header>
+        <Card.Content>
         {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading settings</div> : null}
         {!isLoading ? (
           <form className="stack-form" onSubmit={handleSubmit}>
             <div className="form-row">
               <label>
                 System name
-                <input value={name} onChange={(event) => setName(event.target.value)} required />
+                <Input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
               <SearchableSelect
                 label="Status"
@@ -1123,7 +1240,7 @@ function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: 
             </div>
             <label>
               Description
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
+              <TextArea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
             </label>
             {systemCode === "attendance" ? (
               <div className="form-row">
@@ -1138,17 +1255,18 @@ function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: 
                     <strong>Notes enabled</strong>
                     <small>Allow notes while recording attendance.</small>
                   </span>
-                  <input type="checkbox" checked={notesEnabled} onChange={(event) => setNotesEnabled(event.target.checked)} />
+                  <Checkbox isSelected={notesEnabled} onChange={setNotesEnabled} />
                 </label>
               </div>
             ) : null}
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
+            <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
               {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
               Save settings
-            </button>
+            </Button>
           </form>
         ) : null}
-      </ManagementPage>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
@@ -1231,7 +1349,7 @@ function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; t
       header: "System",
       render: (tenant) => (
         <label className="table-toggle">
-          <input
+          <Input
             type="checkbox"
             checked={draftSettings[tenant.tenantId]?.enabled ?? false}
             disabled={isSaving}
@@ -1245,7 +1363,7 @@ function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; t
       header: "Staff",
       render: (tenant) => (
         <label className="table-toggle">
-          <input
+          <Input
             type="checkbox"
             checked={draftSettings[tenant.tenantId]?.staffAttendanceEnabled ?? false}
             disabled={isSaving}
@@ -1259,7 +1377,7 @@ function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; t
       header: "Member",
       render: (tenant) => (
         <label className="table-toggle">
-          <input
+          <Input
             type="checkbox"
             checked={draftSettings[tenant.tenantId]?.memberAttendanceEnabled ?? false}
             disabled={isSaving}
@@ -1275,18 +1393,26 @@ function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; t
     <div className="page-stack">
       {message ? <Alert tone="success" message={message} /> : null}
       {error ? <Alert message={error} /> : null}
-      <ManagementPage eyebrow="Tenant settings" title="Tenant Level Settings">
+      <Card className="panel">
+        <Card.Header className="panel-header">
+          <div>
+            <p className="eyebrow">Tenant settings</p>
+            <h2>Tenant Level Settings</h2>
+          </div>
+        </Card.Header>
+        <Card.Content>
         {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading tenant settings</div> : null}
         {!isLoading ? (
           <form className="stack-form" onSubmit={handleTenantSettingsSubmit}>
             <PaginatedTable columns={columns} getRowKey={(tenant) => tenant.tenantId} rows={tenantSettings} />
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
+            <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
               {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
               Save tenant settings
-            </button>
+            </Button>
           </form>
         ) : null}
-      </ManagementPage>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
@@ -1374,26 +1500,26 @@ function UserOnboarding({ token, actorRole }: { token: string; actorRole: AuthUs
         {error ? <Alert message={error} /> : null}
 
         <div className="segmented-choice" role="tablist" aria-label="Onboarding mode">
-          <button className={mode === "single" ? "active" : ""} type="button" onClick={() => setMode("single")}>
+          <Button className={mode === "single" ? "active" : ""} fullWidth type="button" onPress={() => setMode("single")}>
             Single
             <span>One {idLabel}</span>
-          </button>
-          <button className={mode === "bulk" ? "active" : ""} type="button" onClick={() => setMode("bulk")}>
+          </Button>
+          <Button className={mode === "bulk" ? "active" : ""} fullWidth type="button" onPress={() => setMode("bulk")}>
             Bulk
             <span>Paste up to 1000</span>
-          </button>
+          </Button>
         </div>
 
         <form className="stack-form" onSubmit={handleSubmit}>
           {mode === "single" ? (
             <label>
               <RequiredLabel>{idLabel}</RequiredLabel>
-              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} required />
+              <Input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} required />
             </label>
           ) : (
             <label>
               <RequiredLabel>{idLabel}s</RequiredLabel>
-              <textarea
+              <TextArea
                 value={bulkUserIdentifiers}
                 onChange={(event) => setBulkUserIdentifiers(normalizeIdentifierInput(event.target.value))}
                 placeholder={`01354\nLOC/00123, OC/00350\n12345 AW/01012`}
@@ -1432,15 +1558,22 @@ function UserOnboarding({ token, actorRole }: { token: string; actorRole: AuthUs
             Temporary password is the {idLabel}. First login requires profile setup.
           </div>
 
-          <button className="primary-button fit" type="submit" disabled={isSubmitting || (mode === "bulk" && pastedCount > 1000)}>
+          <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSubmitting || (mode === "bulk" && pastedCount > 1000)}>
             {isSubmitting ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
             {mode === "single" ? "Onboard user" : "Bulk onboard users"}
-          </button>
+          </Button>
         </form>
       </section>
 
       {bulkErrors.length > 0 ? (
-        <ManagementPage eyebrow="Import results" title="Skipped rows">
+        <Card className="panel">
+          <Card.Header className="panel-header">
+            <div>
+              <p className="eyebrow">Import results</p>
+              <h2>Skipped rows</h2>
+            </div>
+          </Card.Header>
+          <Card.Content>
           <PaginatedTable
             columns={[
               { header: "Row", render: (item) => item.row },
@@ -1451,7 +1584,8 @@ function UserOnboarding({ token, actorRole }: { token: string; actorRole: AuthUs
             getRowKey={(item) => `${item.row}-${item.userIdentifier}`}
             rows={bulkErrors}
           />
-        </ManagementPage>
+          </Card.Content>
+        </Card>
       ) : null}
     </div>
   );
@@ -1513,15 +1647,15 @@ function ManageUsers({
     },
     {
       header: "Status",
-      render: (person) => <span className="status-pill">{person.status}</span>
+      render: (person) => <StatusChip>{person.status}</StatusChip>
     },
     {
       header: "Actions",
       render: (person) => (
         <div className="table-actions">
-          <ActionIconButton label={`Manage ${person.displayName}`} title="Manage user" onClick={() => onOpenUser(person.id)}>
+          <Button className="hero-icon-button" variant="ghost" isIconOnly aria-label={`Manage ${person.displayName}`} onPress={() => onOpenUser(person.id)}>
             <Pencil size={16} />
-          </ActionIconButton>
+          </Button>
         </div>
       )
     }
@@ -1531,7 +1665,14 @@ function ManageUsers({
     <div className="page-stack">
       {error ? <Alert message={error} /> : null}
 
-      <ManagementPage eyebrow="Directory" title="Manage users">
+      <Card className="panel">
+        <Card.Header className="panel-header">
+          <div>
+            <p className="eyebrow">Directory</p>
+            <h2>Manage users</h2>
+          </div>
+        </Card.Header>
+        <Card.Content>
         {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading users</div> : null}
         {!isLoading ? (
           <>
@@ -1549,7 +1690,8 @@ function ManageUsers({
             <PaginatedTable columns={userColumns} emptyMessage="No users found." getRowKey={(person) => person.id} rows={filteredPeople} />
           </>
         ) : null}
-      </ManagementPage>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
@@ -1618,22 +1760,24 @@ function ManageMemberGroups({
   const columns: PaginatedTableColumn<MemberGroup>[] = [
     { header: "Name", render: (group) => group.name },
     { header: "Members", render: (group) => numberValue(group.memberCount) },
-    { header: "Status", render: (group) => <span className="status-pill">{group.status}</span> },
+    { header: "Status", render: (group) => <StatusChip>{group.status}</StatusChip> },
     { header: "Created by", render: (group) => group.createdByName || "" },
     {
       header: "Actions",
       render: (group) => (
         <div className="table-actions">
-          <ActionIconButton label={`Manage ${group.name}`} title="Manage group" onClick={() => onOpenGroup(group.id)}>
+          <Button className="hero-icon-button" variant="ghost" isIconOnly aria-label={`Manage ${group.name}`} onPress={() => onOpenGroup(group.id)}>
             <Pencil size={16} />
-          </ActionIconButton>
-          <ActionIconButton
-            label={`${group.status === "active" ? "Deactivate" : "Reactivate"} ${group.name}`}
-            title={group.status === "active" ? "Deactivate group" : "Reactivate group"}
-            onClick={() => handleDeactivate(group)}
+          </Button>
+          <Button
+            className="hero-icon-button"
+            variant="ghost"
+            isIconOnly
+            aria-label={`${group.status === "active" ? "Deactivate" : "Reactivate"} ${group.name}`}
+            onPress={() => handleDeactivate(group)}
           >
             <Power size={16} />
-          </ActionIconButton>
+          </Button>
         </div>
       )
     }
@@ -1643,16 +1787,18 @@ function ManageMemberGroups({
     <div className="page-stack">
       {message ? <Alert tone="success" message={message} /> : null}
       {error ? <Alert message={error} /> : null}
-      <ManagementPage
-        eyebrow="Member groups"
-        title={`Manage ${tenant?.memberGroupPlural || "Classes"}`}
-        actions={
-          <button className="primary-button fit" type="button" onClick={onCreateGroup}>
+      <Card className="panel">
+        <Card.Header className="panel-header">
+          <div>
+            <p className="eyebrow">Member groups</p>
+            <h2>{`Manage ${tenant?.memberGroupPlural || "Classes"}`}</h2>
+          </div>
+          <Button className="primary-button fit" variant="primary" type="button" onClick={onCreateGroup}>
             <FolderPlus size={18} />
             Create {tenant?.memberGroupSingular || "class"}
-          </button>
-        }
-      >
+          </Button>
+        </Card.Header>
+        <Card.Content>
         {isSaving ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Saving group</div> : null}
         {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading groups</div> : null}
         {!isLoading ? (
@@ -1663,7 +1809,8 @@ function ManageMemberGroups({
             rows={groups}
           />
         ) : null}
-      </ManagementPage>
+        </Card.Content>
+      </Card>
     </div>
   );
 }
@@ -1757,7 +1904,7 @@ function MemberGroupDetailsPage({
             <p className="eyebrow">Member groups</p>
             <h2>{isCreateMode ? `Create ${tenant?.memberGroupSingular || "class"}` : name || `Manage ${tenant?.memberGroupSingular || "class"}`}</h2>
           </div>
-          <button className="secondary-button" type="button" onClick={onBack}>Back</button>
+          <Button className="secondary-button" type="button" onClick={onBack}>Back</Button>
         </div>
 
         {message ? <Alert tone="success" message={message} /> : null}
@@ -1769,7 +1916,7 @@ function MemberGroupDetailsPage({
             <div className="form-row">
               <label>
                 <RequiredLabel>{tenant?.memberGroupSingular || "Class"} name</RequiredLabel>
-                <input value={name} onChange={(event) => setName(event.target.value)} required />
+                <Input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
               <SearchableSelect
                 label="Status"
@@ -1780,7 +1927,7 @@ function MemberGroupDetailsPage({
             </div>
             <label>
               Description
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
+              <TextArea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
             </label>
             <SearchableMultiSelect
               label={tenant?.memberPlural || "Members"}
@@ -1790,10 +1937,10 @@ function MemberGroupDetailsPage({
               selectAllLabel={`Select all ${tenant?.memberPlural || "members"}`}
               onChange={setSelectedMemberIds}
             />
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
+            <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
               {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
               Save {tenant?.memberGroupSingular || "class"}
-            </button>
+            </Button>
           </form>
         ) : null}
       </section>
@@ -1897,7 +2044,7 @@ function UserDetailsPage({
             <p className="eyebrow">User details</p>
             <h2>{displayName || "Manage user"}</h2>
           </div>
-          <button className="secondary-button" type="button" onClick={onBack}>Back</button>
+          <Button className="secondary-button" type="button" onClick={onBack}>Back</Button>
         </div>
 
         {message ? <Alert tone="success" message={message} /> : null}
@@ -1907,12 +2054,12 @@ function UserDetailsPage({
         {!isLoading ? (
           <form className="stack-form" onSubmit={handleSubmit}>
             <div className="form-row">
-              <label>Name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
-              <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+              <label>Name<Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
+              <label>Email<Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
             </div>
             <div className="form-row">
-              <label>{tenant?.userIdentifierLabel || "User ID"}<input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
-              <label>{tenant?.newUserIdentifierLabel || "New User ID"}<input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
+              <label>{tenant?.userIdentifierLabel || "User ID"}<Input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
+              <label>{tenant?.newUserIdentifierLabel || "New User ID"}<Input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
             </div>
             <div className="form-row">
               <SearchableSelect
@@ -1928,16 +2075,16 @@ function UserDetailsPage({
                 options={statusOptions}
               />
             </div>
-            <label>New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} /></label>
+            <label>New password<Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} /></label>
             <div className="form-actions">
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
+              <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSaving}>
                 {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
                 Save user
-              </button>
-              <button className="secondary-button" type="button" onClick={handleDeactivate} disabled={isSaving}>
+              </Button>
+              <Button className="secondary-button" type="button" onClick={handleDeactivate} isDisabled={isSaving}>
                 <Power size={18} />
                 {status === "active" ? "Deactivate" : "Reactivate"}
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -1966,7 +2113,7 @@ function attendanceColumns(): PaginatedTableColumn<AttendanceRecord>[] {
     },
     {
       header: "Status",
-      render: (record) => <span className={`status-pill attendance-${record.status}`}>{record.status}</span>
+      render: (record) => <StatusChip className={`attendance-${record.status}`}>{record.status}</StatusChip>
     },
     {
       header: "Recorded by",
@@ -2111,35 +2258,34 @@ function RecordAttendancePage({ audience, token }: { audience: AttendanceAudienc
               <div className="attendance-main-field">
                 <label>
                   Notes
-                  <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={6} />
+                  <TextArea value={notes} onChange={(event) => setNotes(event.target.value)} rows={6} />
                 </label>
               </div>
               <div className="attendance-side-fields">
                 <label>
-                  Date
                   <span className="input-with-action">
-                    <input type="date" value={attendanceDate} onChange={(event) => setAttendanceDate(event.target.value)} required />
-                    <button className="secondary-button" type="button" onClick={() => setAttendanceDate(todayIsoDate())}>
+                    <DatePickerField label="Date" value={attendanceDate} onChange={setAttendanceDate} isRequired />
+                    <Button className="secondary-button" type="button" onClick={() => setAttendanceDate(todayIsoDate())}>
                       Today
-                    </button>
+                    </Button>
                   </span>
                 </label>
                 <div className="status-field">
                   <span>Status</span>
                   <div className="status-segmented">
                     {(["present", "absent", "late", "excused"] as AttendanceStatus[]).map((option) => (
-                      <button className={status === option ? "active" : ""} type="button" key={option} onClick={() => setStatus(option)}>
+                      <Button className={status === option ? "active" : ""} type="button" key={option} onClick={() => setStatus(option)}>
                         {option}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
               </div>
             </div>
-            <button className="primary-button fit" type="submit" disabled={isSubmitting || people.length === 0}>
+            <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSubmitting || people.length === 0}>
               {isSubmitting ? <Loader2 className="spin" size={18} /> : <ClipboardCheck size={18} />}
               Save attendance
-            </button>
+            </Button>
           </form>
         ) : null}
       </section>
@@ -2202,15 +2348,14 @@ function DailyAttendancePage({ audience, token }: { audience: AttendanceAudience
                 ]}
               />
             ) : null}
-            <label className="inline-filter attendance-date-filter">
-              Date
+            <div className="inline-filter attendance-date-filter">
               <span className="input-with-action">
-                <input type="date" value={filterDate} onChange={(event) => setFilterDate(event.target.value)} />
-                <button className="secondary-button" type="button" onClick={() => setFilterDate(todayIsoDate())}>
+                <DatePickerField label="Date" value={filterDate} onChange={setFilterDate} />
+                <Button className="secondary-button" type="button" onClick={() => setFilterDate(todayIsoDate())}>
                   Today
-                </button>
+                </Button>
               </span>
-            </label>
+            </div>
           </div>
         </div>
 
@@ -2228,7 +2373,21 @@ function DailyAttendancePage({ audience, token }: { audience: AttendanceAudience
   );
 }
 
-function ProfilePage({ session, onSessionChange }: { session: Session; onSessionChange: (session: Session) => void }) {
+function ProfilePage({
+  session,
+  surfaceMode,
+  themeMode,
+  onSessionChange,
+  onSurfaceModeChange,
+  onThemeModeChange
+}: {
+  session: Session;
+  surfaceMode: SurfaceMode;
+  themeMode: ThemeMode;
+  onSessionChange: (session: Session) => void;
+  onSurfaceModeChange: (mode: SurfaceMode) => void;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [displayName, setDisplayName] = useState(session.user.displayName);
   const [email, setEmail] = useState(session.user.email ?? "");
@@ -2305,26 +2464,26 @@ function ProfilePage({ session, onSessionChange }: { session: Session; onSession
         <form className="stack-form" onSubmit={handleProfileSubmit}>
           <label>
             Name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
           </label>
           <label>
             Email
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </label>
           <div className="form-row">
             <label>
               {tenant?.userIdentifierLabel || "User ID"}
-              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} />
+              <Input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} />
             </label>
             <label>
               {tenant?.newUserIdentifierLabel || "New User ID"}
-              <input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
+              <Input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
             </label>
           </div>
-          <button className="primary-button fit" type="submit" disabled={isSavingProfile}>
+          <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSavingProfile}>
             {isSavingProfile ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
             Save profile
-          </button>
+          </Button>
         </form>
       </section>
 
@@ -2338,17 +2497,36 @@ function ProfilePage({ session, onSessionChange }: { session: Session; onSession
         <form className="stack-form" onSubmit={handlePasswordSubmit}>
           <label>
             Current password
-            <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+            <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
           </label>
           <label>
             New password
-            <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} required />
+            <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} required />
           </label>
-          <button className="primary-button fit" type="submit" disabled={isSavingPassword}>
+          <Button className="primary-button fit" variant="primary" type="submit" isDisabled={isSavingPassword}>
             {isSavingPassword ? <Loader2 className="spin" size={18} /> : <LockKeyhole size={18} />}
             Update password
-          </button>
+          </Button>
         </form>
+      </section>
+
+      <section className="panel profile-appearance-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Appearance</p>
+            <h2>Theme</h2>
+          </div>
+          <ThemePopover
+            surfaceMode={surfaceMode}
+            themeMode={themeMode}
+            onSurfaceModeChange={onSurfaceModeChange}
+            onThemeModeChange={onThemeModeChange}
+          />
+        </div>
+        <div className="theme-profile-summary">
+          <span>{themeModeLabel(themeMode)}</span>
+          <span>{surfaceMode === "glass" ? "Glass surfaces" : "Solid surfaces"}</span>
+        </div>
       </section>
     </div>
   );
@@ -2370,9 +2548,12 @@ function DashboardPage({
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
   const [tenantFeatures, setTenantFeatures] = useState<TenantFeature[]>([]);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
+  const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>(() => (localStorage.getItem("ui-surface-mode") === "solid" ? "solid" : "glass"));
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const navDrawerState = useOverlayState();
 
   useEffect(() => {
     let isMounted = true;
@@ -2393,6 +2574,13 @@ function DashboardPage({
       isMounted = false;
     };
   }, [session.token]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    document.documentElement.dataset.surface = surfaceMode;
+    localStorage.setItem("ui-theme-mode", themeMode);
+    localStorage.setItem("ui-surface-mode", surfaceMode);
+  }, [surfaceMode, themeMode]);
 
   useEffect(() => {
     if (session.user.role !== "tenant_admin" && session.user.role !== "tenant_staff") return;
@@ -2433,6 +2621,7 @@ function DashboardPage({
     if (hasUnsavedChanges && !confirmDiscardChanges()) return;
     setHasUnsavedChanges(false);
     setView(nextView);
+    navDrawerState.close();
   }
 
   function handleLogoutClick() {
@@ -2444,6 +2633,7 @@ function DashboardPage({
   function handleWorkspaceChange(event: FormEvent<HTMLElement>) {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    if (target.closest("[data-ignore-dirty='true']")) return;
     if (target.closest(".table-search")) return;
     if (target.closest("form.stack-form")) setHasUnsavedChanges(true);
   }
@@ -2507,6 +2697,109 @@ function DashboardPage({
       : [])
   ];
 
+  function renderNavigationContent() {
+    return (
+    <nav className="app-nav" aria-label="Primary navigation">
+      <Button className={view === "dashboard" ? "active" : ""} variant="ghost" type="button" onPress={() => navigateTo("dashboard")}>
+        <LayoutDashboard size={18} />
+        Dashboard
+      </Button>
+      {session.user.role === "super_admin" ? (
+        <>
+          <SidebarGroup
+            icon={<Building2 size={18} />}
+            isActive={view === "tenant-register" || view === "tenant-manage"}
+            label="Tenants"
+            items={[
+              {
+                active: view === "tenant-register",
+                icon: <Plus size={18} />,
+                label: "Tenant Register",
+                onClick: () => navigateTo("tenant-register")
+              },
+              {
+                active: view === "tenant-manage",
+                icon: <Building2 size={18} />,
+                label: "Manage Tenants",
+                onClick: () => navigateTo("tenant-manage")
+              }
+            ]}
+          />
+          <SidebarGroup
+            icon={<Settings size={18} />}
+            isActive={view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"}
+            label="Available Systems"
+            items={availableSystems.map((system) => ({
+              active:
+                selectedSystemCode === system.code &&
+                (view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"),
+              icon: <Settings size={18} />,
+              label: system.name,
+              onClick: () => {
+                setSelectedSystemCode(system.code);
+                navigateTo("system-dashboard");
+              }
+            }))}
+          />
+        </>
+      ) : null}
+      {session.user.role === "tenant_admin" || session.user.role === "tenant_staff" ? (
+        <>
+          <SidebarGroup
+            icon={<UsersRound size={18} />}
+            isActive={
+              view === "user-onboard" ||
+              view === "user-manage" ||
+              view === "user-detail" ||
+              view === "member-group-create" ||
+              view === "member-group-manage" ||
+              view === "member-group-detail"
+            }
+            label="Users"
+            items={[
+              {
+                active: view === "user-onboard",
+                icon: <UserRound size={18} />,
+                label: "Onboard Users",
+                onClick: () => navigateTo("user-onboard")
+              },
+              {
+                active: view === "user-manage" || view === "user-detail",
+                icon: <UsersRound size={18} />,
+                label: "Manage Users",
+                onClick: () => navigateTo("user-manage")
+              },
+              {
+                active: view === "member-group-manage" || view === "member-group-create" || view === "member-group-detail",
+                icon: <FolderPlus size={18} />,
+                label: `Manage ${currentTenant?.memberGroupPlural || "Classes"}`,
+                onClick: () => navigateTo("member-group-manage")
+              }
+            ]}
+          />
+          {attendanceItems.length > 0 ? (
+            <SidebarGroup
+              icon={<ClipboardCheck size={18} />}
+              isActive={
+                view === "attendance-staff-record" ||
+                view === "attendance-staff-daily" ||
+                view === "attendance-member-record" ||
+                view === "attendance-member-daily"
+              }
+              label="Attendance"
+              items={attendanceItems}
+            />
+          ) : null}
+        </>
+      ) : null}
+      <Button className={view === "profile" ? "active" : ""} variant="ghost" type="button" onPress={() => navigateTo("profile")}>
+        <UserCog size={18} />
+        Profile
+      </Button>
+    </nav>
+    );
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -2516,114 +2809,27 @@ function DashboardPage({
           </div>
           <span>Personnel</span>
         </div>
-
-        <nav aria-label="Primary navigation">
-          <button className={view === "dashboard" ? "active" : ""} type="button" onClick={() => navigateTo("dashboard")}>
-            <LayoutDashboard size={18} />
-            Dashboard
-          </button>
-          {session.user.role === "super_admin" ? (
-            <>
-              <SidebarGroup
-                icon={<Building2 size={18} />}
-                isActive={view === "tenant-register" || view === "tenant-manage"}
-                label="Tenants"
-                items={[
-                  {
-                    active: view === "tenant-register",
-                    icon: <Plus size={18} />,
-                    label: "Tenant Register",
-                    onClick: () => navigateTo("tenant-register")
-                  },
-                  {
-                    active: view === "tenant-manage",
-                    icon: <Building2 size={18} />,
-                    label: "Manage Tenants",
-                    onClick: () => navigateTo("tenant-manage")
-                  }
-                ]}
-              />
-              <SidebarGroup
-                icon={<Settings size={18} />}
-                isActive={view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"}
-                label="Available Systems"
-                items={availableSystems.map((system) => ({
-                  active:
-                    selectedSystemCode === system.code &&
-                    (view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"),
-                  icon: <Settings size={18} />,
-                  label: system.name,
-                  onClick: () => {
-                    setSelectedSystemCode(system.code);
-                    navigateTo("system-dashboard");
-                  }
-                }))}
-              />
-            </>
-          ) : null}
-          {session.user.role === "tenant_admin" || session.user.role === "tenant_staff" ? (
-            <>
-              <SidebarGroup
-                icon={<UsersRound size={18} />}
-                isActive={
-                  view === "user-onboard" ||
-                  view === "user-manage" ||
-                  view === "user-detail" ||
-                  view === "member-group-create" ||
-                  view === "member-group-manage" ||
-                  view === "member-group-detail"
-                }
-                label="Users"
-                items={[
-                  {
-                    active: view === "user-onboard",
-                    icon: <UserRound size={18} />,
-                    label: "Onboard Users",
-                    onClick: () => navigateTo("user-onboard")
-                  },
-                  {
-                    active: view === "user-manage" || view === "user-detail",
-                    icon: <UsersRound size={18} />,
-                    label: "Manage Users",
-                    onClick: () => navigateTo("user-manage")
-                  },
-                  {
-                    active: view === "member-group-manage" || view === "member-group-create" || view === "member-group-detail",
-                    icon: <FolderPlus size={18} />,
-                    label: `Manage ${currentTenant?.memberGroupPlural || "Classes"}`,
-                    onClick: () => navigateTo("member-group-manage")
-                  }
-                ]}
-              />
-              {attendanceItems.length > 0 ? (
-                <SidebarGroup
-                  icon={<ClipboardCheck size={18} />}
-                  isActive={
-                    view === "attendance-staff-record" ||
-                    view === "attendance-staff-daily" ||
-                    view === "attendance-member-record" ||
-                    view === "attendance-member-daily"
-                  }
-                  label="Attendance"
-                  items={attendanceItems}
-                />
-              ) : null}
-            </>
-          ) : null}
-          <button className={view === "profile" ? "active" : ""} type="button" onClick={() => navigateTo("profile")}>
-            <UserCog size={18} />
-            Profile
-          </button>
-        </nav>
+        {renderNavigationContent()}
       </aside>
 
       <section className="workspace" onChangeCapture={handleWorkspaceChange} onSubmitCapture={handleWorkspaceSubmitCapture}>
         <header className="topbar">
-          <div>
-            <p className="eyebrow">{roleLabel(session.user.role)}</p>
-            <h1>{pageTitleFor(view)}</h1>
+          <div className="topbar-heading">
+            <Button className="mobile-nav-trigger" variant="outline" isIconOnly type="button" onPress={navDrawerState.open} aria-label="Open navigation">
+              <Menu size={19} />
+            </Button>
+            <div>
+              <p className="eyebrow">{roleLabel(session.user.role)}</p>
+              <h1>{pageTitleFor(view)}</h1>
+            </div>
           </div>
           <div className="user-menu">
+            <ThemePopover
+              surfaceMode={surfaceMode}
+              themeMode={themeMode}
+              onSurfaceModeChange={setSurfaceMode}
+              onThemeModeChange={setThemeMode}
+            />
             <div className="avatar" aria-hidden="true">
               <UserRound size={18} />
             </div>
@@ -2631,11 +2837,29 @@ function DashboardPage({
               <strong>{session.user.displayName}</strong>
               <span>{session.user.email || session.user.userIdentifier || ""}</span>
             </div>
-            <button className="icon-button" type="button" onClick={handleLogoutClick} aria-label="Sign out" title="Sign out">
+            <Button className="icon-button" variant="ghost" isIconOnly type="button" onClick={handleLogoutClick} aria-label="Sign out">
               <LogOut size={18} />
-            </button>
+            </Button>
           </div>
         </header>
+
+        <Drawer state={navDrawerState}>
+          <Drawer.Backdrop isDismissable variant="blur" />
+          <Drawer.Content placement="left">
+            <Drawer.Dialog className="mobile-nav-drawer">
+              <Drawer.Header>
+                <div className="sidebar-brand">
+                  <div className="brand-mark small">
+                    <UsersRound size={21} aria-hidden="true" />
+                  </div>
+                  <span>Personnel</span>
+                </div>
+                <Drawer.CloseTrigger className="hero-modal-close" aria-label="Close navigation" />
+              </Drawer.Header>
+              <Drawer.Body>{renderNavigationContent()}</Drawer.Body>
+            </Drawer.Dialog>
+          </Drawer.Content>
+        </Drawer>
 
         {view === "dashboard" && error ? <Alert message={error} /> : null}
         {view === "dashboard" && isLoading ? (
@@ -2721,7 +2945,16 @@ function DashboardPage({
         {view === "attendance-member-daily" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
           <DailyAttendancePage audience="member" token={session.token} />
         ) : null}
-        {view === "profile" ? <ProfilePage session={session} onSessionChange={onSessionChange} /> : null}
+        {view === "profile" ? (
+          <ProfilePage
+            session={session}
+            surfaceMode={surfaceMode}
+            themeMode={themeMode}
+            onSessionChange={onSessionChange}
+            onSurfaceModeChange={setSurfaceMode}
+            onThemeModeChange={setThemeMode}
+          />
+        ) : null}
       </section>
     </main>
   );
@@ -2740,3 +2973,5 @@ export default function App() {
 
   return <DashboardPage session={session} onLogout={handleLogout} onSessionChange={setSession} />;
 }
+
+

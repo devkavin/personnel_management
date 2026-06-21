@@ -17,7 +17,7 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.APP_ORIGIN, credentials: true }));
+  app.use(cors({ origin: env.APP_ORIGINS.length > 0 ? env.APP_ORIGINS : env.APP_ORIGIN, credentials: true }));
   app.use(express.json());
   app.use(pinoHttp({ enabled: env.NODE_ENV !== "test" }));
 
