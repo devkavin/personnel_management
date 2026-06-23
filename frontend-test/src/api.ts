@@ -67,7 +67,7 @@ export interface Person {
 export interface MemberGroupMember { id: number; displayName: string }
 export interface MemberGroup { id: number; clientId: number; name: string; description: string | null; status: "active" | "inactive"; createdByUserId?: number; createdByName?: string; memberCount: number; members: MemberGroupMember[] | string | null; createdAt?: string }
 export interface AttendanceRecord { id: number; clientId: number; personId: number; personName: string; recordedByUserId: number; recordedByName: string; attendanceDate: string; status: AttendanceStatus; notes: string | null; createdAt?: string }
-export type ScheduleResourceStatus = "active" | "archived";
+export type ScheduleResourceStatus = "active" | "archived" | "deleted";
 export interface ScheduleTaxonomyNode { id: number; parentId: number | null; name: string; description: string | null; sortOrder: number; status: ScheduleResourceStatus }
 export interface ScheduleSlot { id: number; name: string; startTime: string | null; endTime: string | null; sortOrder: number; status: ScheduleResourceStatus }
 export interface ScheduleSessionTemplate { id: number; name: string; taxonomyNodeId: number; taxonomyName: string; durationMinutes: number | null; objective: string | null; instructions: string | null; intensity: string | null; location: string | null; equipment: string | null; staffNotes: string | null; ownerName: string; status: ScheduleResourceStatus }
@@ -143,18 +143,30 @@ export const api = {
   createScheduleTaxonomy(token: string, payload: Omit<ScheduleTaxonomyNode, "id">) { return request<{ id: number }>("/scheduling/taxonomy", json("POST", token, payload)); },
   updateScheduleTaxonomy(token: string, id: number, payload: Partial<Omit<ScheduleTaxonomyNode, "id">>) { return request<{ message: string }>(`/scheduling/taxonomy/${id}`, json("PATCH", token, payload)); },
   archiveScheduleTaxonomy(token: string, id: number) { return request<void>(`/scheduling/taxonomy/${id}`, json("DELETE", token)); },
+  restoreScheduleTaxonomy(token: string, id: number) { return request<{ message: string }>(`/scheduling/taxonomy/${id}/restore`, json("POST", token)); },
+  deleteScheduleTaxonomy(token: string, id: number) { return request<{ message: string }>(`/scheduling/taxonomy/${id}/delete`, json("POST", token)); },
+  recoverScheduleTaxonomy(token: string, id: number) { return request<{ message: string }>(`/scheduling/taxonomy/${id}/recover`, json("POST", token)); },
   scheduleSlots(token: string) { return get<{ slots: ScheduleSlot[] }>("/scheduling/slots", token); },
   createScheduleSlot(token: string, payload: Omit<ScheduleSlot, "id">) { return request<{ id: number }>("/scheduling/slots", json("POST", token, payload)); },
   updateScheduleSlot(token: string, id: number, payload: Partial<Omit<ScheduleSlot, "id">>) { return request<{ message: string }>(`/scheduling/slots/${id}`, json("PATCH", token, payload)); },
   archiveScheduleSlot(token: string, id: number) { return request<void>(`/scheduling/slots/${id}`, json("DELETE", token)); },
+  restoreScheduleSlot(token: string, id: number) { return request<{ message: string }>(`/scheduling/slots/${id}/restore`, json("POST", token)); },
+  deleteScheduleSlot(token: string, id: number) { return request<{ message: string }>(`/scheduling/slots/${id}/delete`, json("POST", token)); },
+  recoverScheduleSlot(token: string, id: number) { return request<{ message: string }>(`/scheduling/slots/${id}/recover`, json("POST", token)); },
   scheduleSessions(token: string) { return get<{ templates: ScheduleSessionTemplate[] }>("/scheduling/session-templates", token); },
   createScheduleSession(token: string, payload: Omit<ScheduleSessionTemplate, "id" | "taxonomyName" | "ownerName">) { return request<{ id: number }>("/scheduling/session-templates", json("POST", token, payload)); },
   updateScheduleSession(token: string, id: number, payload: Partial<Omit<ScheduleSessionTemplate, "id" | "taxonomyName" | "ownerName">>) { return request<{ message: string }>(`/scheduling/session-templates/${id}`, json("PATCH", token, payload)); },
   archiveScheduleSession(token: string, id: number) { return request<void>(`/scheduling/session-templates/${id}`, json("DELETE", token)); },
+  restoreScheduleSession(token: string, id: number) { return request<{ message: string }>(`/scheduling/session-templates/${id}/restore`, json("POST", token)); },
+  deleteScheduleSession(token: string, id: number) { return request<{ message: string }>(`/scheduling/session-templates/${id}/delete`, json("POST", token)); },
+  recoverScheduleSession(token: string, id: number) { return request<{ message: string }>(`/scheduling/session-templates/${id}/recover`, json("POST", token)); },
   scheduleWeekTemplates(token: string) { return get<{ templates: ScheduleWeekTemplate[] }>("/scheduling/week-templates", token); },
   createScheduleWeekTemplate(token: string, payload: { name: string; description: string | null; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] }) { return request<{ id: number }>("/scheduling/week-templates", json("POST", token, payload)); },
   updateScheduleWeekTemplate(token: string, id: number, payload: Partial<{ name: string; description: string | null; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] }>) { return request<{ message: string }>(`/scheduling/week-templates/${id}`, json("PATCH", token, payload)); },
   archiveScheduleWeekTemplate(token: string, id: number) { return request<void>(`/scheduling/week-templates/${id}`, json("DELETE", token)); },
+  restoreScheduleWeekTemplate(token: string, id: number) { return request<{ message: string }>(`/scheduling/week-templates/${id}/restore`, json("POST", token)); },
+  deleteScheduleWeekTemplate(token: string, id: number) { return request<{ message: string }>(`/scheduling/week-templates/${id}/delete`, json("POST", token)); },
+  recoverScheduleWeekTemplate(token: string, id: number) { return request<{ message: string }>(`/scheduling/week-templates/${id}/recover`, json("POST", token)); },
   schedulePlans(token: string, fromDate: string, toDate: string) { return get<{ plans: SchedulePlan[] }>(`/scheduling/plans?fromDate=${fromDate}&toDate=${toDate}`, token); },
   scheduleCalendar(token: string, fromDate: string, toDate: string) { return get<{ occurrences: ScheduleOccurrence[] }>(`/scheduling/calendar?fromDate=${fromDate}&toDate=${toDate}`, token); },
   createSchedulePlan(token: string, payload: { name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; weekTemplateId?: number | null; entries: ScheduleWeekEntry[]; groupIds: number[]; memberIds: number[] }) { return request<{ id: number; occurrenceCount: number }>("/scheduling/plans", json("POST", token, payload)); },

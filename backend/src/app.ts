@@ -42,8 +42,9 @@ export function createApp() {
   });
 
   const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
-    const statusCode = error instanceof AppError ? error.statusCode : 500;
-    const message = error instanceof Error ? error.message : "Unexpected error";
+    const duplicate = (error as { code?: string }).code === "ER_DUP_ENTRY";
+    const statusCode = error instanceof AppError ? error.statusCode : duplicate ? 409 : 500;
+    const message = duplicate ? "An active or archived record already uses this name" : error instanceof Error ? error.message : "Unexpected error";
     response.status(statusCode).json({ error: { message } });
   };
   app.use(errorHandler);

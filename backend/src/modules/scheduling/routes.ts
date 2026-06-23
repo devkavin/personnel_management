@@ -128,7 +128,7 @@ router.get("/taxonomy", asyncHandler(async (request, response) => {
   const clientId = tenantId(request);
   const [nodes] = await pool.query(
     `SELECT id, parent_id AS parentId, name, description, sort_order AS sortOrder, status, created_at AS createdAt
-     FROM schedule_taxonomy_nodes WHERE client_id = :clientId ORDER BY parent_id, sort_order, name`, { clientId }
+     FROM schedule_taxonomy_nodes WHERE client_id = :clientId AND (status <> 'deleted' OR :includeDeleted) ORDER BY parent_id, sort_order, name`, { clientId, includeDeleted: request.user!.role === "tenant_admin" }
   );
   response.json({ nodes });
 }));
@@ -165,13 +165,44 @@ router.patch("/taxonomy/:id", requireRoles("tenant_admin", "tenant_staff"), asyn
 router.delete("/taxonomy/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const id = Number(request.params.id);
   await assertTenantResource(pool, "schedule_taxonomy_nodes", id, clientId);
-  await pool.query("UPDATE schedule_taxonomy_nodes SET status = 'archived' WHERE id = :id AND client_id = :clientId", { id, clientId });
+  await pool.query("UPDATE schedule_taxonomy_nodes SET status = 'archived' WHERE id = :id AND client_id = :clientId AND status = 'active'", { id, clientId });
   response.status(204).send();
+}));
+
+router.post("/taxonomy/:id/restore", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [nodes] = await pool.query<RowDataPacket[]>("SELECT parent_id AS parentId FROM schedule_taxonomy_nodes WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId });
+  if (!nodes[0]) throw new AppError(404, "Archived structure node not found");
+  if (nodes[0].parentId) await assertTenantResource(pool, "schedule_taxonomy_nodes", Number(nodes[0].parentId), clientId, true);
+  await pool.query("UPDATE schedule_taxonomy_nodes SET status = 'active' WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId });
+  response.json({ message: "Schedule structure restored" });
+}));
+
+router.post("/taxonomy/:id/delete", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [dependencies] = await pool.query<RowDataPacket[]>(`SELECT
+    (SELECT COUNT(*) FROM schedule_taxonomy_nodes WHERE parent_id = :id AND client_id = :clientId AND status <> 'deleted') AS childCount,
+    (SELECT COUNT(*) FROM schedule_session_templates WHERE taxonomy_node_id = :id AND client_id = :clientId AND status <> 'deleted') AS sessionCount`, { id, clientId });
+  if (Number(dependencies[0]?.childCount) > 0 || Number(dependencies[0]?.sessionCount) > 0) throw new AppError(409, "Remove or reassign child nodes and session templates before deleting this structure node");
+  const [result] = await pool.query("UPDATE schedule_taxonomy_nodes SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, deleted_by_user_id = :userId WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId, userId: request.user!.id });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived structure node not found"); response.json({ message: "Schedule structure deleted" });
+}));
+
+router.post("/taxonomy/:id/recover", requireRoles("tenant_admin"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [nodes] = await pool.query<RowDataPacket[]>("SELECT parent_id AS parentId FROM schedule_taxonomy_nodes WHERE id = :id AND client_id = :clientId AND status = 'deleted'", { id, clientId });
+  if (!nodes[0]) throw new AppError(404, "Deleted structure node not found");
+  if (nodes[0].parentId) {
+    const [parents] = await pool.query<RowDataPacket[]>("SELECT id FROM schedule_taxonomy_nodes WHERE id = :parentId AND client_id = :clientId AND status <> 'deleted'", { parentId: nodes[0].parentId, clientId });
+    if (!parents[0]) throw new AppError(409, "Recover the parent structure node first");
+  }
+  await pool.query("UPDATE schedule_taxonomy_nodes SET status = 'archived', deleted_at = NULL, deleted_by_user_id = NULL WHERE id = :id AND client_id = :clientId AND status = 'deleted'", { id, clientId });
+  response.json({ message: "Structure node recovered to archived records" });
 }));
 
 router.get("/slots", asyncHandler(async (request, response) => {
   const clientId = tenantId(request);
-  const [slots] = await pool.query(`SELECT id, name, TIME_FORMAT(start_time, '%H:%i') AS startTime, TIME_FORMAT(end_time, '%H:%i') AS endTime, sort_order AS sortOrder, status FROM schedule_day_slots WHERE client_id = :clientId ORDER BY sort_order, name`, { clientId });
+  const [slots] = await pool.query(`SELECT id, name, TIME_FORMAT(start_time, '%H:%i') AS startTime, TIME_FORMAT(end_time, '%H:%i') AS endTime, sort_order AS sortOrder, status FROM schedule_day_slots WHERE client_id = :clientId AND (status <> 'deleted' OR :includeDeleted) ORDER BY sort_order, name`, { clientId, includeDeleted: request.user!.role === "tenant_admin" });
   response.json({ slots });
 }));
 
@@ -190,7 +221,25 @@ router.patch("/slots/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHa
 
 router.delete("/slots/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const id = Number(request.params.id); await assertTenantResource(pool, "schedule_day_slots", id, clientId);
-  await pool.query("UPDATE schedule_day_slots SET status = 'archived' WHERE id = :id AND client_id = :clientId", { id, clientId }); response.status(204).send();
+  await pool.query("UPDATE schedule_day_slots SET status = 'archived' WHERE id = :id AND client_id = :clientId AND status = 'active'", { id, clientId }); response.status(204).send();
+}));
+
+router.post("/slots/:id/restore", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_day_slots SET status = 'active' WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived day slot not found"); response.json({ message: "Day slot restored" });
+}));
+
+router.post("/slots/:id/delete", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_day_slots SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, deleted_by_user_id = :userId WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId, userId: request.user!.id });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived day slot not found"); response.json({ message: "Day slot deleted" });
+}));
+
+router.post("/slots/:id/recover", requireRoles("tenant_admin"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_day_slots SET status = 'archived', deleted_at = NULL, deleted_by_user_id = NULL WHERE id = :id AND client_id = :clientId AND status = 'deleted'", { id, clientId });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Deleted day slot not found"); response.json({ message: "Day slot recovered to archived records" });
 }));
 
 router.get("/session-templates", asyncHandler(async (request, response) => {
@@ -200,7 +249,7 @@ router.get("/session-templates", asyncHandler(async (request, response) => {
      st.objective, st.instructions, st.intensity, st.location, st.equipment, st.staff_notes AS staffNotes, st.owner_user_id AS ownerUserId,
      owner.display_name AS ownerName, st.status FROM schedule_session_templates st
      INNER JOIN schedule_taxonomy_nodes tn ON tn.id = st.taxonomy_node_id INNER JOIN users owner ON owner.id = st.owner_user_id
-     WHERE st.client_id = :clientId ORDER BY st.name`, { clientId }
+     WHERE st.client_id = :clientId AND (st.status <> 'deleted' OR :includeDeleted) ORDER BY st.name`, { clientId, includeDeleted: request.user!.role === "tenant_admin" }
   );
   response.json({ templates });
 }));
@@ -228,7 +277,27 @@ router.patch("/session-templates/:id", requireRoles("tenant_admin", "tenant_staf
 
 router.delete("/session-templates/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const id = Number(request.params.id); await assertTenantResource(pool, "schedule_session_templates", id, clientId);
-  await pool.query("UPDATE schedule_session_templates SET status = 'archived' WHERE id = :id AND client_id = :clientId", { id, clientId }); response.status(204).send();
+  await pool.query("UPDATE schedule_session_templates SET status = 'archived' WHERE id = :id AND client_id = :clientId AND status = 'active'", { id, clientId }); response.status(204).send();
+}));
+
+router.post("/session-templates/:id/restore", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [templates] = await pool.query<RowDataPacket[]>("SELECT taxonomy_node_id AS taxonomyNodeId FROM schedule_session_templates WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId });
+  if (!templates[0]) throw new AppError(404, "Archived session template not found");
+  await assertTenantResource(pool, "schedule_taxonomy_nodes", Number(templates[0].taxonomyNodeId), clientId, true);
+  await pool.query("UPDATE schedule_session_templates SET status = 'active' WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId }); response.json({ message: "Session template restored" });
+}));
+
+router.post("/session-templates/:id/delete", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_session_templates SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, deleted_by_user_id = :userId WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId, userId: request.user!.id });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived session template not found"); response.json({ message: "Session template deleted" });
+}));
+
+router.post("/session-templates/:id/recover", requireRoles("tenant_admin"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_session_templates SET status = 'archived', deleted_at = NULL, deleted_by_user_id = NULL WHERE id = :id AND client_id = :clientId AND status = 'deleted'", { id, clientId });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Deleted session template not found"); response.json({ message: "Session template recovered to archived records" });
 }));
 
 router.get("/week-templates", asyncHandler(async (request, response) => {
@@ -238,7 +307,7 @@ router.get("/week-templates", asyncHandler(async (request, response) => {
      COALESCE(JSON_ARRAYAGG(CASE WHEN entry.weekday IS NULL THEN NULL ELSE JSON_OBJECT('weekday', entry.weekday, 'slotId', entry.slot_id, 'sessionTemplateId', entry.session_template_id) END), JSON_ARRAY()) AS entries
      FROM schedule_week_templates wt INNER JOIN users owner ON owner.id = wt.owner_user_id
      LEFT JOIN schedule_week_template_entries entry ON entry.week_template_id = wt.id
-     WHERE wt.client_id = :clientId GROUP BY wt.id, wt.name, wt.description, wt.owner_user_id, owner.display_name, wt.status ORDER BY wt.name`, { clientId }
+     WHERE wt.client_id = :clientId AND (wt.status <> 'deleted' OR :includeDeleted) GROUP BY wt.id, wt.name, wt.description, wt.owner_user_id, owner.display_name, wt.status ORDER BY wt.name`, { clientId, includeDeleted: request.user!.role === "tenant_admin" }
   );
   response.json({ templates });
 }));
@@ -261,7 +330,29 @@ router.patch("/week-templates/:id", requireRoles("tenant_admin", "tenant_staff")
 
 router.delete("/week-templates/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const id = Number(request.params.id); await assertTenantResource(pool, "schedule_week_templates", id, clientId);
-  await pool.query("UPDATE schedule_week_templates SET status = 'archived' WHERE id = :id AND client_id = :clientId", { id, clientId }); response.status(204).send();
+  await pool.query("UPDATE schedule_week_templates SET status = 'archived' WHERE id = :id AND client_id = :clientId AND status = 'active'", { id, clientId }); response.status(204).send();
+}));
+
+router.post("/week-templates/:id/restore", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [unavailable] = await pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS count FROM schedule_week_template_entries entry
+    INNER JOIN schedule_day_slots slot ON slot.id = entry.slot_id INNER JOIN schedule_session_templates session ON session.id = entry.session_template_id
+    WHERE entry.week_template_id = :id AND (slot.status <> 'active' OR session.status <> 'active')`, { id });
+  if (Number(unavailable[0]?.count) > 0) throw new AppError(409, "Restore this template's archived day slots and sessions first");
+  const [result] = await pool.query("UPDATE schedule_week_templates SET status = 'active' WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived week template not found"); response.json({ message: "Week template restored" });
+}));
+
+router.post("/week-templates/:id/delete", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_week_templates SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP, deleted_by_user_id = :userId WHERE id = :id AND client_id = :clientId AND status = 'archived'", { id, clientId, userId: request.user!.id });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Archived week template not found"); response.json({ message: "Week template deleted" });
+}));
+
+router.post("/week-templates/:id/recover", requireRoles("tenant_admin"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request); const id = Number(request.params.id);
+  const [result] = await pool.query("UPDATE schedule_week_templates SET status = 'archived', deleted_at = NULL, deleted_by_user_id = NULL WHERE id = :id AND client_id = :clientId AND status = 'deleted'", { id, clientId });
+  if (!(result as { affectedRows: number }).affectedRows) throw new AppError(404, "Deleted week template not found"); response.json({ message: "Week template recovered to archived records" });
 }));
 
 async function resolvePlanMembers(connection: PoolConnection, planId: number, clientId: number) {
