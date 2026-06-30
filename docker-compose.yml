@@ -4,6 +4,7 @@ services:
     container_name: personnel-mysql
     restart: unless-stopped
     environment:
+      TZ: Asia/Colombo
       MYSQL_DATABASE: personnel_management
       MYSQL_USER: personnel_app
       MYSQL_PASSWORD: personnel_password
@@ -30,6 +31,10 @@ services:
       NODE_ENV: development
       PORT: 4000
       APP_ORIGIN: http://localhost:5173
+      APP_ORIGINS: http://localhost:5173
+      APP_TIMEZONE: Asia/Colombo
+      DB_TIMEZONE: "+05:30"
+      TZ: Asia/Colombo
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: personnel_management

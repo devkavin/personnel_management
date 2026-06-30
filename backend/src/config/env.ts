@@ -7,6 +7,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
   APP_ORIGIN: z.string().default("http://localhost:5173"),
+  APP_ORIGINS: z.string().default("http://localhost:5173"),
+  APP_TIMEZONE: z.string().default("Asia/Colombo"),
+  DB_TIMEZONE: z.string().regex(/^[+-]\d{2}:\d{2}$/).default("+05:30"),
   DB_HOST: z.string().default("localhost"),
   DB_PORT: z.coerce.number().default(3306),
   DB_NAME: z.string().default("personnel_management"),
@@ -19,4 +22,11 @@ const envSchema = z.object({
   SUPER_ADMIN_PASSWORD: z.string().min(8).default("ChangeMe123!")
 });
 
-export const env = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+
+export const env = {
+  ...parsedEnv,
+  APP_ORIGINS: parsedEnv.APP_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+};

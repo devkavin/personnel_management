@@ -1,120 +1,60 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
-  BadgeCheck,
-  Building2,
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  Input,
+  Popover,
+  Separator,
+  Spinner,
+  Tooltip
+} from "@heroui/react";
+import {
+  CalendarCheck,
   CalendarDays,
-  CircleAlert,
-  ClipboardCheck,
-  FolderPlus,
-  Eye,
+  Clock3,
+  ChevronDown,
   LayoutDashboard,
-  Loader2,
-  LockKeyhole,
-  Pencil,
+  LogIn,
   LogOut,
-  Power,
-  Plus,
-  Save,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
+  SquarePlus,
+  ListTree,
   ShieldCheck,
-  UserCog,
+  Sun,
   UserRound,
+  UserPlus,
   UsersRound
 } from "lucide-react";
-import { ActionIconButton } from "./components/ActionIconButton";
-import { ManagementPage } from "./components/ManagementPage";
-import { PaginatedTable, type PaginatedTableColumn } from "./components/PaginatedTable";
-import { SearchableMultiSelect } from "./components/SearchableMultiSelect";
-import { SearchableSelect, type SearchableSelectOption } from "./components/SearchableSelect";
-import { SidebarGroup } from "./components/SidebarGroup";
 import {
-  api,
-  type AttendanceAudience,
-  type AttendanceRecord,
-  type AttendanceStatus,
-  type AuthUser,
-  type AvailableSystem,
-  type DashboardResponse,
-  type MemberGroup,
-  type Person,
-  type Tenant,
-  type TenantFeature,
-  type TenantSystemSetting
-} from "./lib/api";
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis
+} from "recharts";
+import { api, type AuthUser, type DashboardResponse, type Role, type Tenant, type TenantFeature } from "./api";
+import { AttendancePage, DashboardDetails, PeoplePage, ProfilePage, SystemsPage, TenantsPage } from "./pages";
+import { MemberDashboard, SchedulingPage } from "./scheduling";
 
-const SESSION_KEY = "personnel_management_session";
-const SAVE_CONFIRMATION_MESSAGE = "Save these changes?";
-const DISCARD_CONFIRMATION_MESSAGE = "You have unsaved changes. Discard them?";
+const SESSION_KEY = "personnel_management_frontend_session";
+type ThemeMode = "light" | "dark";
+type ViewKey = "dashboard" | "attendance" | "people" | "systems" | "profile" | "schedule-calendar" | "schedule-add" | "schedule-setup" | "my-schedule";
 
 interface Session {
   token: string;
   user: AuthUser;
 }
 
-type View =
-  | "dashboard"
-  | "tenant-register"
-  | "tenant-manage"
-  | "system-dashboard"
-  | "system-settings"
-  | "system-tenant-settings"
-  | "user-onboard"
-  | "user-manage"
-  | "user-detail"
-  | "member-group-create"
-  | "member-group-manage"
-  | "member-group-detail"
-  | "attendance-staff-record"
-  | "attendance-staff-daily"
-  | "attendance-member-record"
-  | "attendance-member-daily"
-  | "profile";
-
-function pageTitleFor(view: View) {
-  switch (view) {
-    case "tenant-register":
-      return "Tenant register";
-    case "tenant-manage":
-      return "Manage tenants";
-    case "system-dashboard":
-      return "System dashboard";
-    case "system-settings":
-      return "System settings";
-    case "system-tenant-settings":
-      return "Tenant system settings";
-    case "user-onboard":
-      return "Onboard users";
-    case "user-manage":
-      return "Manage users";
-    case "user-detail":
-      return "User details";
-    case "member-group-create":
-      return "Create class";
-    case "member-group-manage":
-      return "Manage classes";
-    case "member-group-detail":
-      return "Class details";
-    case "attendance-staff-record":
-      return "Record staff attendance";
-    case "attendance-staff-daily":
-      return "Staff attendance";
-    case "attendance-member-record":
-      return "Record member attendance";
-    case "attendance-member-daily":
-      return "Member attendance";
-    case "profile":
-      return "Profile";
-    default:
-      return "Dashboard";
-  }
-}
-
-function readSession(): Session | null {
+function readSession() {
   const value = localStorage.getItem(SESSION_KEY);
   if (!value) return null;
-
   try {
     return JSON.parse(value) as Session;
   } catch {
@@ -123,2605 +63,498 @@ function readSession(): Session | null {
   }
 }
 
-function roleLabel(role: AuthUser["role"]) {
-  if (role === "super_admin") return "Super admin";
-  if (role === "tenant_admin") return "Tenant admin";
+function roleLabel(role: Role) {
+  if (role === "super_admin") return "Super Admin";
+  if (role === "tenant_admin") return "Tenant Admin";
   if (role === "tenant_staff") return "Staff";
   return "Member";
 }
 
-function tenantRoleLabel(role: AuthUser["role"], tenant?: Tenant | null) {
-  if (role === "tenant_staff") return `Staff / ${tenant?.staffSingular || "Staff"}`;
-  if (role === "tenant_member") return `Member / ${tenant?.memberSingular || "Member"}`;
-  return roleLabel(role);
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
-function tenantUserRoleOptions(tenant: Tenant | null, actorRole: AuthUser["role"]): SearchableSelectOption[] {
-  return [
-    { label: `Member / ${tenant?.memberSingular || "Member"}`, value: "tenant_member" },
-    ...(actorRole === "tenant_admin"
-      ? [
-          { label: `Staff / ${tenant?.staffSingular || "Staff"}`, value: "tenant_staff" },
-          { label: "Tenant admin", value: "tenant_admin" }
-        ]
-      : [])
-  ];
+function FieldLabel({ children }: { children: ReactNode }) {
+  return <span className="field-label">{children}</span>;
 }
 
 function numberValue(value: unknown) {
   return Number(value ?? 0).toLocaleString();
 }
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function attendanceCount(dashboard: DashboardResponse | null, status: string) {
+  return dashboard?.todayAttendance?.find((item) => item.status === status)?.count ?? 0;
 }
 
-function normalizeIdentifierInput(value: string) {
-  return value.toUpperCase();
+function formatChartDate(date: string) {
+  return new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(new Date(`${date}T00:00:00`));
 }
 
-function isEnabled(value: unknown) {
-  return value === true || value === 1 || value === "1" || value === "true";
+function AttendanceHistoryChart({ dashboard }: { dashboard: DashboardResponse | null }) {
+  const history = dashboard?.attendanceHistory ?? [];
+  const hasRecords = history.some((item) => item.total > 0);
+  const chartData = history.map((item) => ({
+    ...item,
+    label: formatChartDate(item.date)
+  }));
+
+  return (
+    <div className="attendance-chart-wrap">
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={chartData} margin={{ top: 16, right: 10, left: -18, bottom: 0 }}>
+          <defs>
+            <linearGradient id="presentGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--chart-present)" stopOpacity={0.42} />
+              <stop offset="95%" stopColor="var(--chart-present)" stopOpacity={0.04} />
+            </linearGradient>
+            <linearGradient id="lateGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--chart-late)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--chart-late)" stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+          <XAxis
+            dataKey="label"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "var(--muted)", fontSize: 12, fontWeight: 700 }}
+          />
+          <YAxis
+            allowDecimals={false}
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "var(--muted)", fontSize: 12, fontWeight: 700 }}
+          />
+          <RechartsTooltip
+            cursor={{ stroke: "var(--blue)", strokeDasharray: "4 4" }}
+            contentStyle={{
+              background: "var(--panel-strong)",
+              border: "1px solid var(--line)",
+              borderRadius: "14px",
+              boxShadow: "0 20px 50px rgba(26, 34, 55, 0.14)",
+              color: "var(--text)"
+            }}
+            labelStyle={{ color: "var(--text)", fontWeight: 800 }}
+          />
+          <Area
+            type="monotone"
+            dataKey="present"
+            name="Present"
+            stroke="var(--chart-present)"
+            strokeWidth={3}
+            fill="url(#presentGradient)"
+            activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--panel-strong)" }}
+          />
+          <Area
+            type="monotone"
+            dataKey="late"
+            name="Late"
+            stroke="var(--chart-late)"
+            strokeWidth={2}
+            fill="url(#lateGradient)"
+            activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--panel-strong)" }}
+          />
+          <Area
+            type="monotone"
+            dataKey="absent"
+            name="Absent"
+            stroke="var(--chart-absent)"
+            strokeWidth={2}
+            fill="transparent"
+            activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--panel-strong)" }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+      {!hasRecords ? (
+        <div className="chart-empty">
+          <Chip variant="soft" color="accent">No attendance recorded in the last 7 days</Chip>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-const statusOptions: SearchableSelectOption[] = [
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" }
-];
-
-const attendanceStatusOptions: SearchableSelectOption[] = [
-  { label: "Present", value: "present" },
-  { label: "Absent", value: "absent" },
-  { label: "Late", value: "late" },
-  { label: "Excused", value: "excused" }
-];
-
-function confirmSaveChanges() {
-  return window.confirm(SAVE_CONFIRMATION_MESSAGE);
-}
-
-function confirmDiscardChanges() {
-  return window.confirm(DISCARD_CONFIRMATION_MESSAGE);
+function StatCard({ label, value, icon, tone = "blue" }: { label: string; value: string; icon: ReactNode; tone?: "blue" | "green" | "violet" | "amber" }) {
+  return (
+    <Card className={`stat-card tone-${tone}`}>
+      <Card.Content>
+        <div className="stat-top">
+          <span>{label}</span>
+          <div className="stat-icon">{icon}</div>
+        </div>
+        <strong>{value}</strong>
+      </Card.Content>
+    </Card>
+  );
 }
 
 function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [clientSlug, setClientSlug] = useState("");
   const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const submitLock = useRef(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitLock.current) return;
+    submitLock.current = true;
     setError("");
-    setIsSubmitting(true);
+    setIsLoading(true);
 
     try {
+      if (mode === "register") {
+        await api.register({ clientSlug, displayName, email, password });
+        setMode("login");
+        setError("Registration complete. You can now sign in.");
+        return;
+      }
       const session = await api.login(email, password);
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       onLogin(session);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Login failed");
     } finally {
-      setIsSubmitting(false);
+      submitLock.current = false;
+      setIsLoading(false);
     }
   }
 
   return (
-    <main className="login-screen">
-      <section className="login-brand" aria-label="Personnel Management">
-        <div className="brand-mark">
-          <UsersRound size={28} aria-hidden="true" />
-        </div>
-        <p className="eyebrow">Personnel Management</p>
-        <h1>Operations for every team, class, and workplace.</h1>
-        <div className="brand-metrics" aria-label="Platform capabilities">
-          <span><ShieldCheck size={18} /> Tenant aware</span>
-          <span><BadgeCheck size={18} /> Role based</span>
-          <span><CalendarDays size={18} /> Attendance ready</span>
-        </div>
-      </section>
-
-      <section className="login-panel" aria-label="Sign in">
-        <div>
-          <p className="eyebrow">Welcome back</p>
-          <h2>Sign in</h2>
-        </div>
-
-        {error ? <Alert message={error} /> : null}
-
-        <form onSubmit={handleSubmit} className="login-form">
-          <label>
-            Email or User ID
-            <input value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
-
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="spin" size={18} /> : <LockKeyhole size={18} />}
-            Sign in
-          </button>
-        </form>
-      </section>
+    <main className="login-shell">
+      <Card className="login-card">
+        <Card.Header>
+          <div className="brand-block">
+            <div className="brand-mark"><CalendarCheck size={24} /></div>
+            <div>
+              <span>Personnel OS</span>
+              <h1>{mode === "login" ? "Sign in to your workspace." : "Create your member account."}</h1>
+            </div>
+          </div>
+        </Card.Header>
+        <Card.Content>
+          <form className="login-form" onSubmit={handleSubmit}>
+            {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
+            {mode === "register" ? <>
+              <label className="field-stack"><FieldLabel>Tenant slug</FieldLabel><Input value={clientSlug} onChange={(event) => setClientSlug(event.target.value)} required /></label>
+              <label className="field-stack"><FieldLabel>Display name</FieldLabel><Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
+            </> : null}
+            <label className="field-stack">
+              <FieldLabel>Email or User ID</FieldLabel>
+              <Input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required />
+            </label>
+            <label className="field-stack">
+              <FieldLabel>Password</FieldLabel>
+              <Input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            <Button variant="primary" type="submit" isDisabled={isLoading}>
+              {isLoading ? <Spinner size="sm" /> : mode === "login" ? <LogIn size={17} /> : <UserPlus size={17} />}
+              {isLoading ? (mode === "login" ? "Signing in..." : "Registering...") : mode === "login" ? "Sign in" : "Register"}
+            </Button>
+            <Button variant="ghost" type="button" onPress={() => { setError(""); setMode((value) => value === "login" ? "register" : "login"); }}>
+              {mode === "login" ? "Create member account" : "Back to sign in"}
+            </Button>
+          </form>
+        </Card.Content>
+      </Card>
     </main>
   );
 }
 
 function OnboardingPage({ session, onComplete }: { session: Session; onComplete: (session: Session) => void }) {
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(session.user.displayName);
   const [email, setEmail] = useState(session.user.email ?? "");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (!session.user.clientId) return;
-    api
-      .currentTenant(session.token)
-      .then((tenantData) => setTenant(tenantData.tenant))
-      .catch(() => setTenant(null));
-  }, [session.token, session.user.clientId]);
+  const submitLock = useRef(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (!confirmSaveChanges()) return;
-
+    if (submitLock.current) return;
+    submitLock.current = true;
     setError("");
     setIsSaving(true);
     try {
-      const nextSession = await api.completeOnboarding(session.token, {
-        displayName,
-        email: email.trim() || null,
-        password
-      });
+      const nextSession = await api.completeOnboarding(session.token, { displayName, email, password });
       localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
       onComplete(nextSession);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to complete onboarding");
+      setError(saveError instanceof Error ? saveError.message : "Unable to complete setup");
     } finally {
+      submitLock.current = false;
       setIsSaving(false);
     }
   }
 
   return (
-    <main className="login-screen onboarding-screen">
-      <section className="login-brand" aria-label="Account setup">
-        <div className="brand-mark">
-          <UserRound size={28} aria-hidden="true" />
-        </div>
-        <p className="eyebrow">First login</p>
-        <h1>Complete your account setup.</h1>
-        <div className="brand-metrics" aria-label="Setup details">
-          <span><ShieldCheck size={18} /> User ID fixed</span>
-          <span><LockKeyhole size={18} /> New password required</span>
-        </div>
-      </section>
-
-      <section className="login-panel" aria-label="Complete profile">
-        <div>
-          <p className="eyebrow">Account setup</p>
-          <h2>Complete profile</h2>
-        </div>
-
-        {error ? <Alert message={error} /> : null}
-
-        <form onSubmit={handleSubmit} className="login-form">
-          <label>
-            {tenant?.userIdentifierLabel || "User ID"}
-            <input value={session.user.userIdentifier || session.user.newUserIdentifier || ""} readOnly />
-          </label>
-          <label>
-            Display name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-          </label>
-          <label>
-            Email optional
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <label>
-            New password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
-          </label>
-          <label>
-            Confirm password
-            <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
-          </label>
-          <button className="primary-button" type="submit" disabled={isSaving || password !== confirmPassword}>
-            {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-            Finish setup
-          </button>
-        </form>
-      </section>
+    <main className="login-shell">
+      <Card className="login-card">
+        <Card.Header>
+          <h1>Complete profile</h1>
+        </Card.Header>
+        <Card.Content>
+          <form className="login-form" onSubmit={handleSubmit}>
+            {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
+            <label className="field-stack">
+              <FieldLabel>Display name</FieldLabel>
+              <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
+            </label>
+            <label className="field-stack">
+              <FieldLabel>Email</FieldLabel>
+              <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="field-stack">
+              <FieldLabel>New password</FieldLabel>
+              <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} />
+            </label>
+            <Button variant="primary" type="submit" isDisabled={isSaving}>
+              {isSaving ? <Spinner size="sm" /> : <LogIn size={17} />}
+              {isSaving ? "Saving profile..." : "Enter workspace"}
+            </Button>
+          </form>
+        </Card.Content>
+      </Card>
     </main>
   );
 }
 
-function Alert({ message, tone = "error" }: { message: string; tone?: "error" | "success" }) {
-  return (
-    <div className={`alert ${tone}`} role="alert">
-      <CircleAlert size={18} aria-hidden="true" />
-      {message}
-    </div>
-  );
-}
-
-function RequiredLabel({ children }: { children: ReactNode }) {
-  return (
-    <span className="required-label">
-      {children}
-      <span aria-hidden="true">*</span>
-    </span>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  tone
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  tone: "green" | "gold" | "blue" | "ink";
-}) {
-  return (
-    <article className={`stat-card ${tone}`}>
-      <div className="stat-icon">{icon}</div>
-      <div>
-        <p>{label}</p>
-        <strong>{value}</strong>
-      </div>
-    </article>
-  );
-}
-
-function SystemDashboard({ dashboard, onOpenTenants }: { dashboard: DashboardResponse; onOpenTenants: () => void }) {
-  return (
-    <>
-      <div className="stats-grid">
-        <StatCard icon={<Building2 size={22} />} label="Total tenants" value={numberValue(dashboard.clients?.totalClients)} tone="blue" />
-        <StatCard icon={<Activity size={22} />} label="Active tenants" value={numberValue(dashboard.clients?.activeClients)} tone="green" />
-        <StatCard icon={<UsersRound size={22} />} label="Total people" value={numberValue(dashboard.users?.totalUsers)} tone="ink" />
-        <StatCard icon={<ShieldCheck size={22} />} label="Tenant admins" value={numberValue(dashboard.users?.tenantAdmins)} tone="gold" />
-      </div>
-
-      <section className="dashboard-band">
-        <div>
-          <p className="eyebrow">System overview</p>
-          <h2>Tenant operations</h2>
-        </div>
-        <div className="action-list">
-          <button type="button" onClick={onOpenTenants}>
-            <Building2 size={18} /> Manage tenants
-          </button>
-        </div>
-      </section>
-    </>
-  );
-}
-
-function TenantAdminDashboard({
-  dashboard,
-  onOpenUsers,
-  onOpenAttendance,
-  onCreateUser
-}: {
-  dashboard: DashboardResponse;
-  onOpenUsers: () => void;
-  onCreateUser: () => void;
-  onOpenAttendance: (() => void) | null;
-}) {
-  const attendance = useMemo(() => {
-    const rows = dashboard.todayAttendance ?? [];
-    return {
-      present: rows.find((row) => row.status === "present")?.count ?? 0,
-      absent: rows.find((row) => row.status === "absent")?.count ?? 0,
-      late: rows.find((row) => row.status === "late")?.count ?? 0,
-      excused: rows.find((row) => row.status === "excused")?.count ?? 0
-    };
-  }, [dashboard.todayAttendance]);
-
-  return (
-    <>
-      <div className="stats-grid">
-        <StatCard icon={<UsersRound size={22} />} label="Total people" value={numberValue(dashboard.people?.totalPeople)} tone="blue" />
-        <StatCard icon={<BadgeCheck size={22} />} label="Active people" value={numberValue(dashboard.people?.activePeople)} tone="green" />
-        <StatCard icon={<CalendarDays size={22} />} label="Present today" value={numberValue(attendance.present)} tone="ink" />
-        <StatCard icon={<CircleAlert size={22} />} label="Absent today" value={numberValue(attendance.absent)} tone="gold" />
-      </div>
-
-      <section className="dashboard-band">
-        <div>
-          <p className="eyebrow">Tenant administration</p>
-          <h2>Manage people and systems</h2>
-        </div>
-        <div className="action-list">
-          <button type="button" onClick={onCreateUser}>
-            <Plus size={18} /> Onboard user
-          </button>
-          <button type="button" onClick={onOpenUsers}>
-            <UsersRound size={18} /> Manage users
-          </button>
-          {onOpenAttendance ? (
-            <button type="button" onClick={onOpenAttendance}>
-              <ClipboardCheck size={18} /> Attendance reports
-            </button>
-          ) : null}
-        </div>
-      </section>
-    </>
-  );
-}
-
-function StaffDashboard({
-  dashboard,
-  onMarkAttendance,
-  onOpenDailyAttendance
-}: {
-  dashboard: DashboardResponse;
-  onMarkAttendance: (() => void) | null;
-  onOpenDailyAttendance: (() => void) | null;
-}) {
-  const attendance = useMemo(() => {
-    const rows = dashboard.todayAttendance ?? [];
-    return {
-      present: rows.find((row) => row.status === "present")?.count ?? 0,
-      absent: rows.find((row) => row.status === "absent")?.count ?? 0,
-      late: rows.find((row) => row.status === "late")?.count ?? 0,
-      excused: rows.find((row) => row.status === "excused")?.count ?? 0
-    };
-  }, [dashboard.todayAttendance]);
-
-  return (
-    <>
-      <div className="stats-grid">
-        <StatCard icon={<CalendarDays size={22} />} label="Present today" value={numberValue(attendance.present)} tone="green" />
-        <StatCard icon={<CircleAlert size={22} />} label="Absent today" value={numberValue(attendance.absent)} tone="gold" />
-        <StatCard icon={<Activity size={22} />} label="Late today" value={numberValue(attendance.late)} tone="blue" />
-        <StatCard icon={<BadgeCheck size={22} />} label="Excused today" value={numberValue(attendance.excused)} tone="ink" />
-      </div>
-
-      <section className="dashboard-band">
-        <div>
-          <p className="eyebrow">Staff workspace</p>
-          <h2>Attendance actions</h2>
-        </div>
-        <div className="action-list">
-          {onMarkAttendance ? (
-            <button className="primary-action-button" type="button" onClick={onMarkAttendance}>
-              <ClipboardCheck size={18} /> Mark attendance
-            </button>
-          ) : null}
-          {onOpenDailyAttendance ? (
-            <button type="button" onClick={onOpenDailyAttendance}>
-              <CalendarDays size={18} /> Daily attendance
-            </button>
-          ) : null}
-        </div>
-      </section>
-    </>
-  );
-}
-
-function MemberDashboard({ user }: { user: AuthUser }) {
-  return (
-    <section className="dashboard-band">
-      <div>
-        <p className="eyebrow">{roleLabel(user.role)}</p>
-        <h2>{user.displayName}</h2>
-      </div>
-      <p className="muted">Dashboard is active. Views to be added here.</p>
-    </section>
-  );
-}
-
-function TenantRegister({ token }: { token: string }) {
-  const [tenantName, setTenantName] = useState("");
-  const [tenantSlug, setTenantSlug] = useState("");
-  const [personSingular, setPersonSingular] = useState("person");
-  const [personPlural, setPersonPlural] = useState("people");
-  const [staffSingular, setStaffSingular] = useState("coach");
-  const [staffPlural, setStaffPlural] = useState("coaches");
-  const [memberSingular, setMemberSingular] = useState("student");
-  const [memberPlural, setMemberPlural] = useState("students");
-  const [userIdentifierLabel, setUserIdentifierLabel] = useState("User ID");
-  const [newUserIdentifierLabel, setNewUserIdentifierLabel] = useState("New User ID");
-  const [memberGroupSingular, setMemberGroupSingular] = useState("Class");
-  const [memberGroupPlural, setMemberGroupPlural] = useState("Classes");
-  const [adminName, setAdminName] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminUserIdentifier, setAdminUserIdentifier] = useState("");
-  const [adminNewUserIdentifier, setAdminNewUserIdentifier] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  function handleTenantName(value: string) {
-    setTenantName(value);
-    setTenantSlug((current) => current || slugify(value));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setIsSubmitting(true);
-
-    try {
-      await api.createTenant(token, {
-        name: tenantName,
-        slug: tenantSlug,
-        personSingular,
-        personPlural,
-        staffSingular,
-        staffPlural,
-        memberSingular,
-        memberPlural,
-        userIdentifierLabel,
-        newUserIdentifierLabel,
-        memberGroupSingular,
-        memberGroupPlural,
-        admin: {
-          displayName: adminName,
-          email: adminEmail,
-          userIdentifier: adminUserIdentifier || undefined,
-          newUserIdentifier: adminNewUserIdentifier || undefined,
-          password: adminPassword
-        }
-      });
-      setTenantName("");
-      setTenantSlug("");
-      setPersonSingular("person");
-      setPersonPlural("people");
-      setStaffSingular("coach");
-      setStaffPlural("coaches");
-      setMemberSingular("student");
-      setMemberPlural("students");
-      setUserIdentifierLabel("User ID");
-      setNewUserIdentifierLabel("New User ID");
-      setMemberGroupSingular("Class");
-      setMemberGroupPlural("Classes");
-      setAdminName("");
-      setAdminEmail("");
-      setAdminUserIdentifier("");
-      setAdminNewUserIdentifier("");
-      setAdminPassword("");
-      setMessage("Tenant and tenant admin created");
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to create tenant");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Tenant registration</p>
-            <h2>Create tenant admin</h2>
-          </div>
-          <span className="required-note"><span aria-hidden="true">*</span> Required fields</span>
-        </div>
-
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-
-        <form className="stack-form" onSubmit={handleSubmit}>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>Tenant name</RequiredLabel>
-              <input value={tenantName} onChange={(event) => handleTenantName(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>Tenant slug</RequiredLabel>
-              <input value={tenantSlug} onChange={(event) => setTenantSlug(slugify(event.target.value))} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>General person label</RequiredLabel>
-              <input value={personSingular} onChange={(event) => setPersonSingular(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>General plural label</RequiredLabel>
-              <input value={personPlural} onChange={(event) => setPersonPlural(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>Staff label</RequiredLabel>
-              <input value={staffSingular} onChange={(event) => setStaffSingular(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>Staff plural label</RequiredLabel>
-              <input value={staffPlural} onChange={(event) => setStaffPlural(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>Member label</RequiredLabel>
-              <input value={memberSingular} onChange={(event) => setMemberSingular(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>Member plural label</RequiredLabel>
-              <input value={memberPlural} onChange={(event) => setMemberPlural(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>User ID label</RequiredLabel>
-              <input value={userIdentifierLabel} onChange={(event) => setUserIdentifierLabel(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>New User ID label</RequiredLabel>
-              <input value={newUserIdentifierLabel} onChange={(event) => setNewUserIdentifierLabel(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>Member group label</RequiredLabel>
-              <input value={memberGroupSingular} onChange={(event) => setMemberGroupSingular(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>Member group plural label</RequiredLabel>
-              <input value={memberGroupPlural} onChange={(event) => setMemberGroupPlural(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              <RequiredLabel>Admin name</RequiredLabel>
-              <input value={adminName} onChange={(event) => setAdminName(event.target.value)} required />
-            </label>
-            <label>
-              <RequiredLabel>Admin email</RequiredLabel>
-              <input type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} required />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              {userIdentifierLabel}
-              <input value={adminUserIdentifier} onChange={(event) => setAdminUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
-            <label>
-              {newUserIdentifierLabel}
-              <input value={adminNewUserIdentifier} onChange={(event) => setAdminNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
-          </div>
-          <label>
-            <RequiredLabel>Temporary password</RequiredLabel>
-            <input type="password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} minLength={8} required />
-          </label>
-          <button className="primary-button fit" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-            Create tenant
-          </button>
-        </form>
-      </section>
-
-    </div>
-  );
-}
-
-type TenantAction = "view" | "edit" | "settings" | null;
-
-function ManageTenants({ token }: { token: string }) {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
-  const [action, setAction] = useState<TenantAction>(null);
-  const [features, setFeatures] = useState<TenantFeature[]>([]);
-  const [editForm, setEditForm] = useState<Omit<Tenant, "id" | "createdAt"> | null>(null);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const loadTenants = useCallback(async () => {
-    const data = await api.tenants(token);
-    setTenants(data.tenants);
-  }, [token]);
-
-  useEffect(() => {
-    loadTenants()
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load tenants"))
-      .finally(() => setIsLoading(false));
-  }, [loadTenants]);
-
-  function openView(tenant: Tenant) {
-    setSelectedTenant(tenant);
-    setAction("view");
-    setError("");
-    setMessage("");
-  }
-
-  function openEdit(tenant: Tenant) {
-    setSelectedTenant(tenant);
-    setEditForm({
-      name: tenant.name,
-      slug: tenant.slug,
-      personSingular: tenant.personSingular,
-      personPlural: tenant.personPlural,
-      staffSingular: tenant.staffSingular,
-      staffPlural: tenant.staffPlural,
-      memberSingular: tenant.memberSingular,
-      memberPlural: tenant.memberPlural,
-      userIdentifierLabel: tenant.userIdentifierLabel,
-      newUserIdentifierLabel: tenant.newUserIdentifierLabel,
-      memberGroupSingular: tenant.memberGroupSingular,
-      memberGroupPlural: tenant.memberGroupPlural,
-      status: tenant.status
-    });
-    setAction("edit");
-    setError("");
-    setMessage("");
-  }
-
-  async function openSettings(tenant: Tenant) {
-    setSelectedTenant(tenant);
-    setAction("settings");
-    setError("");
-    setMessage("");
-    try {
-      const data = await api.tenantFeatures(token, tenant.id);
-      setFeatures(data.features);
-    } catch (settingsError) {
-      setError(settingsError instanceof Error ? settingsError.message : "Unable to load tenant settings");
-    }
-  }
-
-  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedTenant || !editForm) return;
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await api.updateTenant(token, selectedTenant.id, editForm);
-      await loadTenants();
-      setSelectedTenant({ ...selectedTenant, ...editForm });
-      setMessage("Tenant updated");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to update tenant");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleStatusChange(tenant: Tenant, status: Tenant["status"]) {
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      if (status === "inactive") {
-        await api.deactivateTenant(token, tenant.id);
-      } else {
-        await api.updateTenant(token, tenant.id, { status: "active" });
-      }
-      await loadTenants();
-      setMessage(status === "inactive" ? "Tenant deactivated" : "Tenant reactivated");
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : "Unable to update tenant status");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleFeatureSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedTenant) return;
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await api.updateTenantFeatures(
-        token,
-        selectedTenant.id,
-        Object.fromEntries(features.map((feature) => [feature.code, Boolean(feature.enabled)]))
-      );
-      setMessage("Tenant settings updated");
-    } catch (settingsError) {
-      setError(settingsError instanceof Error ? settingsError.message : "Unable to update tenant settings");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  const tenantColumns: PaginatedTableColumn<Tenant>[] = [
-    {
-      header: "Name",
-      render: (tenant) => tenant.name
-    },
-    {
-      header: "Slug",
-      render: (tenant) => tenant.slug
-    },
-    {
-      header: "Terminology",
-      render: (tenant) => `${tenant.staffPlural} / ${tenant.memberPlural}`
-    },
-    {
-      header: "Status",
-      render: (tenant) => <span className="status-pill">{tenant.status}</span>
-    },
-    {
-      header: "Actions",
-      render: (tenant) => (
-        <div className="table-actions">
-          <ActionIconButton label={`View ${tenant.name}`} title="View tenant" onClick={() => openView(tenant)}>
-            <Eye size={16} />
-          </ActionIconButton>
-          <ActionIconButton label={`Edit ${tenant.name}`} title="Edit tenant" onClick={() => openEdit(tenant)}>
-            <Pencil size={16} />
-          </ActionIconButton>
-          <ActionIconButton label={`Configure ${tenant.name}`} title="Tenant settings" onClick={() => openSettings(tenant)}>
-            <Settings size={16} />
-          </ActionIconButton>
-          <ActionIconButton
-            label={`${tenant.status === "active" ? "Deactivate" : "Reactivate"} ${tenant.name}`}
-            title={tenant.status === "active" ? "Deactivate tenant" : "Reactivate tenant"}
-            onClick={() => handleStatusChange(tenant, tenant.status === "active" ? "inactive" : "active")}
-          >
-            <Power size={16} />
-          </ActionIconButton>
-        </div>
-      )
-    }
-  ];
-
-  return (
-    <div className="page-stack">
-      {message ? <Alert tone="success" message={message} /> : null}
-      {error ? <Alert message={error} /> : null}
-
-      {selectedTenant && action ? (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">{action === "view" ? "Tenant details" : action === "edit" ? "Edit tenant" : "Tenant settings"}</p>
-              <h2>{selectedTenant.name}</h2>
-            </div>
-            <button className="secondary-button" type="button" onClick={() => (confirmDiscardChanges() ? setAction(null) : undefined)}>Close</button>
-          </div>
-
-          {action === "view" ? (
-            <div className="detail-grid">
-              <div><span>Name</span><strong>{selectedTenant.name}</strong></div>
-              <div><span>Slug</span><strong>{selectedTenant.slug}</strong></div>
-              <div><span>Staff label</span><strong>{selectedTenant.staffSingular} / {selectedTenant.staffPlural}</strong></div>
-              <div><span>Member label</span><strong>{selectedTenant.memberSingular} / {selectedTenant.memberPlural}</strong></div>
-              <div><span>User ID label</span><strong>{selectedTenant.userIdentifierLabel}</strong></div>
-              <div><span>New User ID label</span><strong>{selectedTenant.newUserIdentifierLabel}</strong></div>
-              <div><span>Member group label</span><strong>{selectedTenant.memberGroupSingular} / {selectedTenant.memberGroupPlural}</strong></div>
-              <div><span>Status</span><strong>{selectedTenant.status}</strong></div>
-            </div>
-          ) : null}
-
-          {action === "edit" && editForm ? (
-            <form className="stack-form" onSubmit={handleEditSubmit}>
-              <div className="form-row">
-                <label>Name<input value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} required /></label>
-                <label>Slug<input value={editForm.slug} onChange={(event) => setEditForm({ ...editForm, slug: slugify(event.target.value) })} required /></label>
-              </div>
-              <div className="form-row">
-                <label>Staff label<input value={editForm.staffSingular} onChange={(event) => setEditForm({ ...editForm, staffSingular: event.target.value })} required /></label>
-                <label>Staff plural label<input value={editForm.staffPlural} onChange={(event) => setEditForm({ ...editForm, staffPlural: event.target.value })} required /></label>
-              </div>
-              <div className="form-row">
-                <label>Member label<input value={editForm.memberSingular} onChange={(event) => setEditForm({ ...editForm, memberSingular: event.target.value })} required /></label>
-                <label>Member plural label<input value={editForm.memberPlural} onChange={(event) => setEditForm({ ...editForm, memberPlural: event.target.value })} required /></label>
-              </div>
-              <div className="form-row">
-                <label>User ID label<input value={editForm.userIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, userIdentifierLabel: event.target.value })} required /></label>
-                <label>New User ID label<input value={editForm.newUserIdentifierLabel} onChange={(event) => setEditForm({ ...editForm, newUserIdentifierLabel: event.target.value })} required /></label>
-              </div>
-              <div className="form-row">
-                <label>Member group label<input value={editForm.memberGroupSingular} onChange={(event) => setEditForm({ ...editForm, memberGroupSingular: event.target.value })} required /></label>
-                <label>Member group plural label<input value={editForm.memberGroupPlural} onChange={(event) => setEditForm({ ...editForm, memberGroupPlural: event.target.value })} required /></label>
-              </div>
-              <SearchableSelect
-                label="Status"
-                value={editForm.status}
-                onChange={(value) => setEditForm({ ...editForm, status: value as Tenant["status"] })}
-                options={statusOptions}
-              />
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
-                {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-                Save tenant
-              </button>
-            </form>
-          ) : null}
-
-          {action === "settings" ? (
-            <form className="stack-form" onSubmit={handleFeatureSubmit}>
-              {features.map((feature) => (
-                <label className="toggle-row" key={feature.code}>
-                  <span>
-                    <strong>{feature.name}</strong>
-                    <small>{feature.description}</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(feature.enabled)}
-                    onChange={(event) =>
-                      setFeatures((current) =>
-                        current.map((item) => (item.code === feature.code ? { ...item, enabled: event.target.checked } : item))
-                      )
-                    }
-                  />
-                </label>
-              ))}
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
-                {isSaving ? <Loader2 className="spin" size={18} /> : <Settings size={18} />}
-                Save settings
-              </button>
-            </form>
-          ) : null}
-        </section>
-      ) : null}
-
-      <ManagementPage eyebrow="Tenants" title="Manage tenants">
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading tenants</div> : null}
-        {!isLoading ? (
-          <PaginatedTable columns={tenantColumns} emptyMessage="No tenants found." getRowKey={(tenant) => tenant.id} rows={tenants} />
-        ) : null}
-      </ManagementPage>
-    </div>
-  );
-}
-
-function SystemDashboardPage({
-  systemCode,
-  token,
-  onOpenSystemSettings,
-  onOpenTenantSettings
-}: {
-  systemCode: string;
-  token: string;
-  onOpenSystemSettings: () => void;
-  onOpenTenantSettings: () => void;
-}) {
-  const [dashboard, setDashboard] = useState<Awaited<ReturnType<typeof api.systemDashboard>> | null>(null);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .systemDashboard(token, systemCode)
-      .then(setDashboard)
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load system"))
-      .finally(() => setIsLoading(false));
-  }, [systemCode, token]);
-
-  return (
-    <div className="page-stack">
-      {error ? <Alert message={error} /> : null}
-      {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading system</div> : null}
-      {!isLoading && dashboard ? (
-        <>
-          <div className="stats-grid">
-            <StatCard icon={<Building2 size={22} />} label="Total tenants" value={numberValue(dashboard.stats.totalTenants)} tone="blue" />
-            <StatCard icon={<Activity size={22} />} label="Enabled tenants" value={numberValue(dashboard.stats.enabledTenants)} tone="green" />
-            <StatCard icon={<UsersRound size={22} />} label="Staff attendance" value={numberValue(dashboard.stats.staffAttendanceTenants)} tone="ink" />
-            <StatCard icon={<CalendarDays size={22} />} label="Member attendance" value={numberValue(dashboard.stats.memberAttendanceTenants)} tone="gold" />
-          </div>
-
-          <section className="dashboard-band">
-            <div>
-              <p className="eyebrow">Available system</p>
-              <h2>{dashboard.system.name}</h2>
-            </div>
-            <div className="action-list">
-              <button type="button" onClick={onOpenSystemSettings}>
-                <Settings size={18} /> System Settings
-              </button>
-              <button type="button" onClick={onOpenTenantSettings}>
-                <Building2 size={18} /> Tenant Level Settings
-              </button>
-            </div>
-          </section>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function SystemSettingsPage({ systemCode, token }: { systemCode: string; token: string }) {
-  const [system, setSystem] = useState<AvailableSystem | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<"active" | "inactive">("active");
-  const [defaultAttendanceStatus, setDefaultAttendanceStatus] = useState<AttendanceStatus>("present");
-  const [notesEnabled, setNotesEnabled] = useState(true);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    api
-      .systemSettings(token, systemCode)
-      .then((data) => {
-        setSystem(data.system);
-        setName(data.system.name);
-        setDescription(data.system.description ?? "");
-        setStatus(data.system.status);
-        setDefaultAttendanceStatus((data.settings.find((setting) => setting.key === "default_attendance_status")?.value as AttendanceStatus | undefined) ?? "present");
-        setNotesEnabled(isEnabled(data.settings.find((setting) => setting.key === "notes_enabled")?.value ?? "true"));
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load settings"))
-      .finally(() => setIsLoading(false));
-  }, [systemCode, token]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await api.updateSystemSettings(token, systemCode, {
-        name,
-        description: description || null,
-        status,
-        settings: {
-          defaultAttendanceStatus,
-          notesEnabled
-        }
-      });
-      setMessage("System settings updated");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save system settings");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <div className="page-stack">
-      {message ? <Alert tone="success" message={message} /> : null}
-      {error ? <Alert message={error} /> : null}
-      <ManagementPage eyebrow={system?.name || "System"} title="System Settings">
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading settings</div> : null}
-        {!isLoading ? (
-          <form className="stack-form" onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label>
-                System name
-                <input value={name} onChange={(event) => setName(event.target.value)} required />
-              </label>
-              <SearchableSelect
-                label="Status"
-                value={status}
-                onChange={(value) => setStatus(value as "active" | "inactive")}
-                options={statusOptions}
-              />
-            </div>
-            <label>
-              Description
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
-            </label>
-            {systemCode === "attendance" ? (
-              <div className="form-row">
-                <SearchableSelect
-                  label="Default attendance status"
-                  value={defaultAttendanceStatus}
-                  onChange={(value) => setDefaultAttendanceStatus(value as AttendanceStatus)}
-                  options={attendanceStatusOptions}
-                />
-                <label className="toggle-row">
-                  <span>
-                    <strong>Notes enabled</strong>
-                    <small>Allow notes while recording attendance.</small>
-                  </span>
-                  <input type="checkbox" checked={notesEnabled} onChange={(event) => setNotesEnabled(event.target.checked)} />
-                </label>
-              </div>
-            ) : null}
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-              Save settings
-            </button>
-          </form>
-        ) : null}
-      </ManagementPage>
-    </div>
-  );
-}
-
-function TenantSystemSettingsPage({ systemCode, token }: { systemCode: string; token: string }) {
-  const [tenantSettings, setTenantSettings] = useState<TenantSystemSetting[]>([]);
-  const [draftSettings, setDraftSettings] = useState<Record<number, { enabled: boolean; staffAttendanceEnabled: boolean; memberAttendanceEnabled: boolean }>>({});
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const loadSettings = useCallback(async () => {
-    const data = await api.systemTenantSettings(token, systemCode);
-    setTenantSettings(data.tenantSettings);
-    setDraftSettings(
-      Object.fromEntries(
-        data.tenantSettings.map((tenant) => [
-          tenant.tenantId,
-          {
-            enabled: isEnabled(tenant.enabled),
-            staffAttendanceEnabled: isEnabled(tenant.staffAttendanceEnabled),
-            memberAttendanceEnabled: isEnabled(tenant.memberAttendanceEnabled)
-          }
-        ])
-      )
-    );
-  }, [systemCode, token]);
-
-  useEffect(() => {
-    loadSettings()
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load tenant settings"))
-      .finally(() => setIsLoading(false));
-  }, [loadSettings]);
-
-  function updateTenantDraft(tenantId: number, patch: Partial<{ enabled: boolean; staffAttendanceEnabled: boolean; memberAttendanceEnabled: boolean }>) {
-    setDraftSettings((current) => ({
-      ...current,
-      [tenantId]: {
-        enabled: current[tenantId]?.enabled ?? false,
-        staffAttendanceEnabled: current[tenantId]?.staffAttendanceEnabled ?? false,
-        memberAttendanceEnabled: current[tenantId]?.memberAttendanceEnabled ?? false,
-        ...patch
-      }
-    }));
-  }
-
-  async function handleTenantSettingsSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await Promise.all(
-        tenantSettings.map((tenant) => {
-          const draft = draftSettings[tenant.tenantId];
-          return api.updateSystemTenantSettings(token, systemCode, tenant.tenantId, {
-            enabled: draft?.enabled ?? false,
-            settings: {
-              staffAttendanceEnabled: draft?.staffAttendanceEnabled ?? false,
-              memberAttendanceEnabled: draft?.memberAttendanceEnabled ?? false
-            }
-          });
-        })
-      );
-      await loadSettings();
-      setMessage("Tenant system settings updated");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save tenant settings");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  const columns: PaginatedTableColumn<TenantSystemSetting>[] = [
-    { header: "Tenant", render: (tenant) => tenant.tenantName },
-    { header: "Slug", render: (tenant) => tenant.tenantSlug },
-    {
-      header: "System",
-      render: (tenant) => (
-        <label className="table-toggle">
-          <input
-            type="checkbox"
-            checked={draftSettings[tenant.tenantId]?.enabled ?? false}
-            disabled={isSaving}
-            onChange={(event) => updateTenantDraft(tenant.tenantId, { enabled: event.target.checked })}
-          />
-          Enabled
-        </label>
-      )
-    },
-    {
-      header: "Staff",
-      render: (tenant) => (
-        <label className="table-toggle">
-          <input
-            type="checkbox"
-            checked={draftSettings[tenant.tenantId]?.staffAttendanceEnabled ?? false}
-            disabled={isSaving}
-            onChange={(event) => updateTenantDraft(tenant.tenantId, { staffAttendanceEnabled: event.target.checked })}
-          />
-          Attendance
-        </label>
-      )
-    },
-    {
-      header: "Member",
-      render: (tenant) => (
-        <label className="table-toggle">
-          <input
-            type="checkbox"
-            checked={draftSettings[tenant.tenantId]?.memberAttendanceEnabled ?? false}
-            disabled={isSaving}
-            onChange={(event) => updateTenantDraft(tenant.tenantId, { memberAttendanceEnabled: event.target.checked })}
-          />
-          Attendance
-        </label>
-      )
-    }
-  ];
-
-  return (
-    <div className="page-stack">
-      {message ? <Alert tone="success" message={message} /> : null}
-      {error ? <Alert message={error} /> : null}
-      <ManagementPage eyebrow="Tenant settings" title="Tenant Level Settings">
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading tenant settings</div> : null}
-        {!isLoading ? (
-          <form className="stack-form" onSubmit={handleTenantSettingsSubmit}>
-            <PaginatedTable columns={columns} getRowKey={(tenant) => tenant.tenantId} rows={tenantSettings} />
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-              Save tenant settings
-            </button>
-          </form>
-        ) : null}
-      </ManagementPage>
-    </div>
-  );
-}
-
-type UserRole = "tenant_admin" | "tenant_staff" | "tenant_member";
-
-function parseBulkUserIdentifiers(value: string) {
-  return value
-    .split(/[\s,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function UserOnboarding({ token, actorRole }: { token: string; actorRole: AuthUser["role"] }) {
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [groups, setGroups] = useState<MemberGroup[]>([]);
-  const [mode, setMode] = useState<"single" | "bulk">("single");
-  const [userIdentifier, setUserIdentifier] = useState("");
-  const [bulkUserIdentifiers, setBulkUserIdentifiers] = useState("");
-  const [role, setRole] = useState<UserRole>("tenant_member");
-  const [memberGroupId, setMemberGroupId] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [bulkErrors, setBulkErrors] = useState<Array<{ row: number; userIdentifier: string; message: string }>>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    Promise.all([api.currentTenant(token), api.memberGroups(token)])
-      .then(([tenantData, groupsData]) => {
-        setTenant(tenantData.tenant);
-        setGroups(groupsData.groups.filter((group) => group.status === "active"));
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load onboarding form"));
-  }, [token]);
-
-  const pastedCount = parseBulkUserIdentifiers(bulkUserIdentifiers).length;
-  const idLabel = tenant?.userIdentifierLabel || "User ID";
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setBulkErrors([]);
-    setIsSubmitting(true);
-
-    try {
-      const payload = {
-        role,
-        ...(role === "tenant_member" && memberGroupId ? { memberGroupId: Number(memberGroupId) } : {})
-      };
-
-      if (mode === "single") {
-        await api.onboardPerson(token, {
-          ...payload,
-          userIdentifier: userIdentifier || ""
-        });
-        setMessage(`${idLabel} ${userIdentifier} onboarded. Temporary password is the ${idLabel}.`);
-        setUserIdentifier("");
-      } else {
-        const result = await api.bulkOnboardPeople(token, {
-          ...payload,
-          userIdentifiers: bulkUserIdentifiers
-        });
-        setMessage(`Created ${result.created} user${result.created === 1 ? "" : "s"}${result.skipped ? `, skipped ${result.skipped}` : ""}.`);
-        setBulkErrors(result.errors);
-        if (result.created > 0) setBulkUserIdentifiers("");
-      }
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to onboard users");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">User onboarding</p>
-            <h2>Onboard users by {idLabel}</h2>
-          </div>
-        </div>
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-
-        <div className="segmented-choice" role="tablist" aria-label="Onboarding mode">
-          <button className={mode === "single" ? "active" : ""} type="button" onClick={() => setMode("single")}>
-            Single
-            <span>One {idLabel}</span>
-          </button>
-          <button className={mode === "bulk" ? "active" : ""} type="button" onClick={() => setMode("bulk")}>
-            Bulk
-            <span>Paste up to 1000</span>
-          </button>
-        </div>
-
-        <form className="stack-form" onSubmit={handleSubmit}>
-          {mode === "single" ? (
-            <label>
-              <RequiredLabel>{idLabel}</RequiredLabel>
-              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} required />
-            </label>
-          ) : (
-            <label>
-              <RequiredLabel>{idLabel}s</RequiredLabel>
-              <textarea
-                value={bulkUserIdentifiers}
-                onChange={(event) => setBulkUserIdentifiers(normalizeIdentifierInput(event.target.value))}
-                placeholder={`01354\nLOC/00123, OC/00350\n12345 AW/01012`}
-                rows={8}
-                required
-              />
-              <small>{pastedCount > 0 ? `${pastedCount} ${idLabel}${pastedCount === 1 ? "" : "s"} ready.` : `Pasted users use their ${idLabel} as the temporary password.`} Limit 1000.</small>
-            </label>
-          )}
-
-          <div className="form-row">
-            <SearchableSelect
-              label="Role"
-              value={role}
-              onChange={(value) => {
-                const nextRole = value as UserRole;
-                setRole(nextRole);
-                if (nextRole !== "tenant_member") setMemberGroupId("");
-              }}
-              options={tenantUserRoleOptions(tenant, actorRole)}
-            />
-            {role === "tenant_member" ? (
-              <SearchableSelect
-                label={tenant?.memberGroupSingular || "Class"}
-                value={memberGroupId}
-                onChange={setMemberGroupId}
-                options={[
-                  { label: `No ${tenant?.memberGroupSingular?.toLowerCase() || "class"}`, value: "" },
-                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
-                ]}
-              />
-            ) : null}
-          </div>
-
-          <div className="info-callout">
-            Temporary password is the {idLabel}. First login requires profile setup.
-          </div>
-
-          <button className="primary-button fit" type="submit" disabled={isSubmitting || (mode === "bulk" && pastedCount > 1000)}>
-            {isSubmitting ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-            {mode === "single" ? "Onboard user" : "Bulk onboard users"}
-          </button>
-        </form>
-      </section>
-
-      {bulkErrors.length > 0 ? (
-        <ManagementPage eyebrow="Import results" title="Skipped rows">
-          <PaginatedTable
-            columns={[
-              { header: "Row", render: (item) => item.row },
-              { header: idLabel, render: (item) => item.userIdentifier },
-              { header: "Reason", render: (item) => item.message }
-            ]}
-            emptyMessage="No skipped rows."
-            getRowKey={(item) => `${item.row}-${item.userIdentifier}`}
-            rows={bulkErrors}
-          />
-        </ManagementPage>
-      ) : null}
-    </div>
-  );
-}
-
-function ManageUsers({
-  token,
-  onOpenUser
-}: {
-  token: string;
-  onOpenUser: (userId: number) => void;
-}) {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [groups, setGroups] = useState<MemberGroup[]>([]);
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([api.people(token), api.currentTenant(token), api.memberGroups(token)])
-      .then(([peopleData, tenantData, groupsData]) => {
-        setPeople(peopleData.people);
-        setTenant(tenantData.tenant);
-        setGroups(groupsData.groups.filter((group) => group.status === "active"));
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load users"))
-      .finally(() => setIsLoading(false));
-  }, [token]);
-
-  const filteredPeople = useMemo(() => {
-    if (!selectedGroupId) return people;
-    const group = groups.find((item) => String(item.id) === selectedGroupId);
-    if (!group) return [];
-    const memberIds = new Set(groupMembers(group).map((member) => Number(member.id)));
-    return people.filter((person) => person.role === "tenant_member" && memberIds.has(person.id));
-  }, [groups, people, selectedGroupId]);
-
-  const userColumns: PaginatedTableColumn<Person>[] = [
-    {
-      header: "Name",
-      render: (person) => person.displayName
-    },
-    {
-      header: "Email",
-      render: (person) => person.email
-    },
-    {
-      header: tenant?.userIdentifierLabel || "User ID",
-      render: (person) => person.userIdentifier || ""
-    },
-    {
-      header: tenant?.newUserIdentifierLabel || "New User ID",
-      render: (person) => person.newUserIdentifier || ""
-    },
-    {
-      header: "Role",
-      render: (person) => tenantRoleLabel(person.role, tenant)
-    },
-    {
-      header: "Status",
-      render: (person) => <span className="status-pill">{person.status}</span>
-    },
-    {
-      header: "Actions",
-      render: (person) => (
-        <div className="table-actions">
-          <ActionIconButton label={`Manage ${person.displayName}`} title="Manage user" onClick={() => onOpenUser(person.id)}>
-            <Pencil size={16} />
-          </ActionIconButton>
-        </div>
-      )
-    }
-  ];
-
-  return (
-    <div className="page-stack">
-      {error ? <Alert message={error} /> : null}
-
-      <ManagementPage eyebrow="Directory" title="Manage users">
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading users</div> : null}
-        {!isLoading ? (
-          <>
-            <div className="management-filter-bar">
-              <SearchableSelect
-                label={tenant?.memberGroupSingular || "Class"}
-                value={selectedGroupId}
-                onChange={setSelectedGroupId}
-                options={[
-                  { label: "All users", value: "" },
-                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
-                ]}
-              />
-            </div>
-            <PaginatedTable columns={userColumns} emptyMessage="No users found." getRowKey={(person) => person.id} rows={filteredPeople} />
-          </>
-        ) : null}
-      </ManagementPage>
-    </div>
-  );
-}
-
-function groupMembers(group: MemberGroup) {
-  if (Array.isArray(group.members)) return group.members.filter((member): member is { id: number; displayName: string } => Boolean(member));
-  if (!group.members) return [];
-
-  try {
-    const parsed = JSON.parse(group.members);
-    return Array.isArray(parsed) ? parsed.filter((member) => member && member.id && member.displayName) : [];
-  } catch {
-    return [];
-  }
-}
-
-function ManageMemberGroups({
-  token,
-  onCreateGroup,
-  onOpenGroup
-}: {
-  token: string;
-  onCreateGroup: () => void;
-  onOpenGroup: (groupId: number) => void;
-}) {
-  const [groups, setGroups] = useState<MemberGroup[]>([]);
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const loadGroups = useCallback(async () => {
-    const [groupsData, tenantData] = await Promise.all([api.memberGroups(token), api.currentTenant(token)]);
-    setGroups(groupsData.groups);
-    setTenant(tenantData.tenant);
-  }, [token]);
-
-  useEffect(() => {
-    loadGroups()
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load groups"))
-      .finally(() => setIsLoading(false));
-  }, [loadGroups]);
-
-  async function handleDeactivate(group: MemberGroup) {
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      if (group.status === "active") {
-        await api.deactivateMemberGroup(token, group.id);
-        setMessage(`${tenant?.memberGroupSingular || "Class"} deactivated`);
-      } else {
-        await api.updateMemberGroup(token, group.id, { status: "active" });
-        setMessage(`${tenant?.memberGroupSingular || "Class"} reactivated`);
-      }
-      await loadGroups();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to update group");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  const columns: PaginatedTableColumn<MemberGroup>[] = [
-    { header: "Name", render: (group) => group.name },
-    { header: "Members", render: (group) => numberValue(group.memberCount) },
-    { header: "Status", render: (group) => <span className="status-pill">{group.status}</span> },
-    { header: "Created by", render: (group) => group.createdByName || "" },
-    {
-      header: "Actions",
-      render: (group) => (
-        <div className="table-actions">
-          <ActionIconButton label={`Manage ${group.name}`} title="Manage group" onClick={() => onOpenGroup(group.id)}>
-            <Pencil size={16} />
-          </ActionIconButton>
-          <ActionIconButton
-            label={`${group.status === "active" ? "Deactivate" : "Reactivate"} ${group.name}`}
-            title={group.status === "active" ? "Deactivate group" : "Reactivate group"}
-            onClick={() => handleDeactivate(group)}
-          >
-            <Power size={16} />
-          </ActionIconButton>
-        </div>
-      )
-    }
-  ];
-
-  return (
-    <div className="page-stack">
-      {message ? <Alert tone="success" message={message} /> : null}
-      {error ? <Alert message={error} /> : null}
-      <ManagementPage
-        eyebrow="Member groups"
-        title={`Manage ${tenant?.memberGroupPlural || "Classes"}`}
-        actions={
-          <button className="primary-button fit" type="button" onClick={onCreateGroup}>
-            <FolderPlus size={18} />
-            Create {tenant?.memberGroupSingular || "class"}
-          </button>
-        }
-      >
-        {isSaving ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Saving group</div> : null}
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading groups</div> : null}
-        {!isLoading ? (
-          <PaginatedTable
-            columns={columns}
-            emptyMessage={`No ${tenant?.memberGroupPlural?.toLowerCase() || "classes"} found.`}
-            getRowKey={(group) => group.id}
-            rows={groups}
-          />
-        ) : null}
-      </ManagementPage>
-    </div>
-  );
-}
-
-function MemberGroupDetailsPage({
-  token,
-  groupId,
-  onBack
-}: {
-  token: string;
-  groupId?: number;
-  onBack: () => void;
-}) {
-  const isCreateMode = groupId === undefined;
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [members, setMembers] = useState<Person[]>([]);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<"active" | "inactive">("active");
-  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    Promise.all([api.currentTenant(token), api.people(token), api.memberGroups(token)])
-      .then(([tenantData, peopleData, groupsData]) => {
-        setTenant(tenantData.tenant);
-        setMembers(peopleData.people.filter((person) => person.role === "tenant_member" && person.status === "active"));
-
-        if (!isCreateMode) {
-          const group = groupsData.groups.find((item) => item.id === groupId);
-          if (!group) throw new Error("Group not found");
-          setName(group.name);
-          setDescription(group.description ?? "");
-          setStatus(group.status);
-          setSelectedMemberIds(groupMembers(group).map((member) => Number(member.id)));
-        }
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load group"))
-      .finally(() => setIsLoading(false));
-  }, [groupId, isCreateMode, token]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      if (isCreateMode) {
-        await api.createMemberGroup(token, {
-          name,
-          description: description || null,
-          status,
-          memberIds: selectedMemberIds
-        });
-        setName("");
-        setDescription("");
-        setStatus("active");
-        setSelectedMemberIds([]);
-        setMessage(`${tenant?.memberGroupSingular || "Class"} created`);
-      } else {
-        await api.updateMemberGroup(token, groupId, {
-          name,
-          description: description || null,
-          status,
-          memberIds: selectedMemberIds
-        });
-        setMessage(`${tenant?.memberGroupSingular || "Class"} updated`);
-      }
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save group");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  const memberOptions = members.map((member) => ({
-    id: member.id,
-    label: member.displayName,
-    meta: member.userIdentifier || member.email || undefined
-  }));
-
-  return (
-    <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Member groups</p>
-            <h2>{isCreateMode ? `Create ${tenant?.memberGroupSingular || "class"}` : name || `Manage ${tenant?.memberGroupSingular || "class"}`}</h2>
-          </div>
-          <button className="secondary-button" type="button" onClick={onBack}>Back</button>
-        </div>
-
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading group</div> : null}
-
-        {!isLoading ? (
-          <form className="stack-form" onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label>
-                <RequiredLabel>{tenant?.memberGroupSingular || "Class"} name</RequiredLabel>
-                <input value={name} onChange={(event) => setName(event.target.value)} required />
-              </label>
-              <SearchableSelect
-                label="Status"
-                value={status}
-                onChange={(value) => setStatus(value as "active" | "inactive")}
-                options={statusOptions}
-              />
-            </div>
-            <label>
-              Description
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
-            </label>
-            <SearchableMultiSelect
-              label={tenant?.memberPlural || "Members"}
-              options={memberOptions}
-              placeholder={`Assign ${tenant?.memberPlural || "members"}`}
-              selectedIds={selectedMemberIds}
-              selectAllLabel={`Select all ${tenant?.memberPlural || "members"}`}
-              onChange={setSelectedMemberIds}
-            />
-            <button className="primary-button fit" type="submit" disabled={isSaving}>
-              {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-              Save {tenant?.memberGroupSingular || "class"}
-            </button>
-          </form>
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
-function UserDetailsPage({
-  token,
-  actorRole,
-  userId,
-  onBack
-}: {
-  token: string;
-  actorRole: AuthUser["role"];
-  userId: number;
-  onBack: () => void;
-}) {
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [userIdentifier, setUserIdentifier] = useState("");
-  const [newUserIdentifier, setNewUserIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("tenant_member");
-  const [status, setStatus] = useState<"active" | "inactive">("active");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    Promise.all([api.people(token), api.currentTenant(token)])
-      .then(([peopleData, tenantData]) => {
-        const person = peopleData.people.find((item) => item.id === userId);
-        if (!person) throw new Error("User not found");
-        setDisplayName(person.displayName);
-        setEmail(person.email ?? "");
-        setUserIdentifier(person.userIdentifier ?? "");
-        setNewUserIdentifier(person.newUserIdentifier ?? "");
-        setRole(person.role);
-        setStatus(person.status);
-        setTenant(tenantData.tenant);
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load user"))
-      .finally(() => setIsLoading(false));
-  }, [token, userId]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      await api.updatePerson(token, userId, {
-        displayName,
-        email,
-        userIdentifier: userIdentifier || null,
-        newUserIdentifier: newUserIdentifier || null,
-        role,
-        status,
-        ...(password ? { password } : {})
-      });
-      setPassword("");
-      setMessage("User updated");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to update user");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function handleDeactivate() {
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      if (status === "active") {
-        await api.deactivatePerson(token, userId);
-        setStatus("inactive");
-        setMessage("User deactivated");
-      } else {
-        await api.updatePerson(token, userId, { status: "active" });
-        setStatus("active");
-        setMessage("User reactivated");
-      }
-    } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : "Unable to update user status");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <div className="page-stack">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">User details</p>
-            <h2>{displayName || "Manage user"}</h2>
-          </div>
-          <button className="secondary-button" type="button" onClick={onBack}>Back</button>
-        </div>
-
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading user</div> : null}
-
-        {!isLoading ? (
-          <form className="stack-form" onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label>Name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
-              <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              <label>{tenant?.userIdentifierLabel || "User ID"}<input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
-              <label>{tenant?.newUserIdentifierLabel || "New User ID"}<input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} /></label>
-            </div>
-            <div className="form-row">
-              <SearchableSelect
-                label="Role"
-                value={role}
-                onChange={(value) => setRole(value as UserRole)}
-                options={tenantUserRoleOptions(tenant, actorRole)}
-              />
-              <SearchableSelect
-                label="Status"
-                value={status}
-                onChange={(value) => setStatus(value as "active" | "inactive")}
-                options={statusOptions}
-              />
-            </div>
-            <label>New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} /></label>
-            <div className="form-actions">
-              <button className="primary-button fit" type="submit" disabled={isSaving}>
-                {isSaving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-                Save user
-              </button>
-              <button className="secondary-button" type="button" onClick={handleDeactivate} disabled={isSaving}>
-                <Power size={18} />
-                {status === "active" ? "Deactivate" : "Reactivate"}
-              </button>
-            </div>
-          </form>
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatDate(value: string) {
-  return value ? new Date(value).toLocaleDateString() : "";
-}
-
-function attendanceColumns(): PaginatedTableColumn<AttendanceRecord>[] {
+function navItems(role: Role, features: TenantFeature[]) {
+  const attendanceEnabled = features.some((feature) => feature.code.startsWith("attendance") && Boolean(feature.enabled));
   return [
-    {
-      header: "User",
-      render: (record) => record.personName
-    },
-    {
-      header: "Date",
-      render: (record) => formatDate(record.attendanceDate)
-    },
-    {
-      header: "Status",
-      render: (record) => <span className={`status-pill attendance-${record.status}`}>{record.status}</span>
-    },
-    {
-      header: "Recorded by",
-      render: (record) => record.recordedByName
-    },
-    {
-      header: "Notes",
-      render: (record) => record.notes || ""
-    }
+    { key: "dashboard" as const, label: "Dashboard", icon: <LayoutDashboard size={19} /> },
+    ...(attendanceEnabled && (role === "tenant_staff" || role === "tenant_admin")
+      ? [{ key: "attendance" as const, label: "Attendance", icon: <CalendarCheck size={19} /> }]
+      : []),
+    ...(role === "tenant_admin" || role === "tenant_staff" || role === "super_admin"
+      ? [{ key: "people" as const, label: role === "super_admin" ? "Tenants" : "People", icon: <UsersRound size={19} /> }]
+      : []),
+    ...(role === "super_admin" ? [{ key: "systems" as const, label: "Systems", icon: <Settings size={19} /> }] : []),
+    { key: "profile" as const, label: "Profile", icon: <UserRound size={19} /> }
   ];
 }
 
-function attendanceAudienceRole(audience: AttendanceAudience) {
-  return audience === "staff" ? "tenant_staff" : "tenant_member";
-}
+function Sidebar({
+  collapsed,
+  features,
+  role,
+  view,
+  onNavigate,
+  onToggle
+}: {
+  collapsed: boolean;
+  features: TenantFeature[];
+  role: Role;
+  view: ViewKey;
+  onNavigate: (view: ViewKey) => void;
+  onToggle: () => void;
+}) {
+  const schedulingEnabled = features.some((feature) => feature.code === "scheduling" && Boolean(feature.enabled));
+  const scheduleViews: Array<{ key: ViewKey; label: string; icon: ReactNode }> = role === "tenant_member"
+    ? [{ key: "my-schedule", label: "My schedule", icon: <CalendarDays size={19} /> }]
+    : [
+        { key: "schedule-calendar", label: "Calendar", icon: <CalendarDays size={19} /> },
+        { key: "schedule-add", label: "Add schedule", icon: <SquarePlus size={19} /> },
+        { key: "schedule-setup", label: "Schedule setup", icon: <ListTree size={19} /> }
+      ];
+  const [scheduleOpen, setScheduleOpen] = useState(scheduleViews.some((item) => item.key === view));
 
-function RecordAttendancePage({ audience, token }: { audience: AttendanceAudience; token: string }) {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [groups, setGroups] = useState<MemberGroup[]>([]);
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [selectedPersonIds, setSelectedPersonIds] = useState<number[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [attendanceDate, setAttendanceDate] = useState(todayIsoDate());
-  const [status, setStatus] = useState<AttendanceStatus>("present");
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    Promise.all([api.people(token), api.currentTenant(token), audience === "member" ? api.memberGroups(token) : Promise.resolve({ groups: [] })])
-      .then(([peopleData, tenantData, groupsData]) => {
-        setPeople(peopleData.people.filter((person) => person.status === "active" && person.role === attendanceAudienceRole(audience)));
-        setTenant(tenantData.tenant);
-        setGroups(groupsData.groups.filter((group) => group.status === "active"));
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load attendance form"))
-      .finally(() => setIsLoading(false));
-  }, [audience, token]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (selectedPersonIds.length === 0) {
-      setError(`Select at least one ${audience === "staff" ? tenant?.staffSingular || "staff" : tenant?.memberSingular || "member"}`);
-      return;
-    }
-
-    setError("");
-    setMessage("");
-    setIsSubmitting(true);
-
-    try {
-      await Promise.all(
-        selectedPersonIds.map((personId) =>
-          api.createAttendance(token, {
-            personId,
-            audience,
-            attendanceDate,
-            status,
-            notes: notes || undefined
-          })
-        )
-      );
-      setSelectedPersonIds([]);
-      setStatus("present");
-      setNotes("");
-      setMessage(`${selectedPersonIds.length} attendance record${selectedPersonIds.length === 1 ? "" : "s"} saved`);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to record attendance");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const personOptions = people.map((person) => ({
-    id: person.id,
-    label: person.displayName,
-    meta: tenantRoleLabel(person.role, tenant)
-  }));
-  const pluralLabel = audience === "staff" ? tenant?.staffPlural || "staff" : tenant?.memberPlural || "members";
-  const groupLabel = tenant?.memberGroupSingular || "Class";
-
-  function handleGroupSelection(groupId: string) {
-    setSelectedGroupId(groupId);
-    if (!groupId) return;
-    const group = groups.find((item) => String(item.id) === groupId);
-    if (!group) return;
-    const groupMemberIds = groupMembers(group).map((member) => Number(member.id));
-    setSelectedPersonIds(people.filter((person) => groupMemberIds.includes(person.id)).map((person) => person.id));
+  function navButton(item: { key: ViewKey; label: string; icon: ReactNode }) {
+    const button = <Button key={item.key} className={view === item.key ? "active" : ""} variant="ghost" isIconOnly={collapsed} onPress={() => onNavigate(item.key)}>{item.icon}{!collapsed ? <span>{item.label}</span> : null}</Button>;
+    return collapsed ? <Tooltip key={item.key}><Tooltip.Trigger>{button}</Tooltip.Trigger><Tooltip.Content placement="right">{item.label}</Tooltip.Content></Tooltip> : button;
   }
 
   return (
-    <div className="page-stack">
-      <section className="panel compact-panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Attendance</p>
-            <h2>Record {pluralLabel} attendance</h2>
-          </div>
-        </div>
-
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading attendance form</div> : null}
-
-        {!isLoading ? (
-          <form className="stack-form attendance-record-form" onSubmit={handleSubmit}>
-            <div className="attendance-record-summary">
-              <span>{people.length} available</span>
-              <strong>{selectedPersonIds.length} selected</strong>
-            </div>
-            <div className="attendance-selection-row">
-              <div className="attendance-selection-main">
-                <SearchableMultiSelect
-                  label={pluralLabel}
-                  options={personOptions}
-                  placeholder={`Select ${pluralLabel}`}
-                  selectedIds={selectedPersonIds}
-                  selectAllLabel={`Select all ${pluralLabel}`}
-                  onChange={(nextIds) => {
-                    setSelectedGroupId("");
-                    setSelectedPersonIds(nextIds);
-                  }}
-                />
-              </div>
-              {audience === "member" ? (
-                <div className="attendance-group-filter">
-                  <SearchableSelect
-                    label={groupLabel}
-                    value={selectedGroupId}
-                    onChange={handleGroupSelection}
-                    options={[
-                      { label: `Select ${groupLabel.toLowerCase()}`, value: "" },
-                      ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
-                    ]}
-                  />
-                </div>
-              ) : null}
-            </div>
-            <div className="attendance-record-grid">
-              <div className="attendance-main-field">
-                <label>
-                  Notes
-                  <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={6} />
-                </label>
-              </div>
-              <div className="attendance-side-fields">
-                <label>
-                  Date
-                  <span className="input-with-action">
-                    <input type="date" value={attendanceDate} onChange={(event) => setAttendanceDate(event.target.value)} required />
-                    <button className="secondary-button" type="button" onClick={() => setAttendanceDate(todayIsoDate())}>
-                      Today
-                    </button>
-                  </span>
-                </label>
-                <div className="status-field">
-                  <span>Status</span>
-                  <div className="status-segmented">
-                    {(["present", "absent", "late", "excused"] as AttendanceStatus[]).map((option) => (
-                      <button className={status === option ? "active" : ""} type="button" key={option} onClick={() => setStatus(option)}>
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <button className="primary-button fit" type="submit" disabled={isSubmitting || people.length === 0}>
-              {isSubmitting ? <Loader2 className="spin" size={18} /> : <ClipboardCheck size={18} />}
-              Save attendance
-            </button>
-          </form>
-        ) : null}
-      </section>
-    </div>
+    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+      <div className="sidebar-brand">
+        <div className="brand-mark small"><CalendarCheck size={20} /></div>
+        {!collapsed ? <strong>Personnel</strong> : null}
+      </div>
+      <div className="sidebar-nav">
+        {navItems(role, features).map(navButton)}
+        {schedulingEnabled ? <div className="sidebar-group">
+          {collapsed ? scheduleViews.map(navButton) : <>
+            <Button className={scheduleViews.some((item) => item.key === view) ? "active group-active" : ""} variant="ghost" onPress={() => setScheduleOpen((value) => !value)}><CalendarDays size={19} /><span>Schedule</span><ChevronDown className={scheduleOpen ? "group-chevron open" : "group-chevron"} size={16} /></Button>
+            {scheduleOpen ? <div className="sidebar-subnav">{scheduleViews.map(navButton)}</div> : null}
+          </>}
+        </div> : null}
+      </div>
+      <Button variant="secondary" isIconOnly={collapsed} onPress={onToggle}>
+        {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        {!collapsed ? <span>Collapse</span> : null}
+      </Button>
+    </aside>
   );
 }
 
-function DailyAttendancePage({ audience, token }: { audience: AttendanceAudience; token: string }) {
-  const [records, setRecords] = useState<AttendanceRecord[]>([]);
-  const [groups, setGroups] = useState<MemberGroup[]>([]);
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [filterDate, setFilterDate] = useState(todayIsoDate());
-  const [selectedGroupId, setSelectedGroupId] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    setIsLoading(true);
-    Promise.all([
-      api.attendance(token, { audience, fromDate: filterDate, toDate: filterDate }),
-      api.currentTenant(token),
-      audience === "member" ? api.memberGroups(token) : Promise.resolve({ groups: [] })
-    ])
-      .then(([attendanceData, tenantData, groupsData]) => {
-        setRecords(attendanceData.records);
-        setTenant(tenantData.tenant);
-        setGroups(groupsData.groups.filter((group) => group.status === "active"));
-      })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load attendance"))
-      .finally(() => setIsLoading(false));
-  }, [audience, filterDate, token]);
-
-  const pluralLabel = audience === "staff" ? tenant?.staffPlural || "staff" : tenant?.memberPlural || "members";
-  const filteredRecords = useMemo(() => {
-    if (audience !== "member" || !selectedGroupId) return records;
-    const group = groups.find((item) => String(item.id) === selectedGroupId);
-    if (!group) return [];
-    const memberIds = new Set(groupMembers(group).map((member) => Number(member.id)));
-    return records.filter((record) => memberIds.has(record.personId));
-  }, [audience, groups, records, selectedGroupId]);
-
-  return (
-    <div className="page-stack">
-      {error ? <Alert message={error} /> : null}
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Records</p>
-            <h2>Daily {pluralLabel} attendance</h2>
-          </div>
-          <div className="panel-header-actions">
-            {audience === "member" ? (
-              <SearchableSelect
-                label={tenant?.memberGroupSingular || "Class"}
-                value={selectedGroupId}
-                onChange={setSelectedGroupId}
-                options={[
-                  { label: `All ${pluralLabel}`, value: "" },
-                  ...groups.map((group) => ({ label: group.name, value: String(group.id) }))
-                ]}
-              />
-            ) : null}
-            <label className="inline-filter attendance-date-filter">
-              Date
-              <span className="input-with-action">
-                <input type="date" value={filterDate} onChange={(event) => setFilterDate(event.target.value)} />
-                <button className="secondary-button" type="button" onClick={() => setFilterDate(todayIsoDate())}>
-                  Today
-                </button>
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {isLoading ? <div className="loading-state compact"><Loader2 className="spin" size={20} /> Loading attendance</div> : null}
-        {!isLoading ? (
-          <PaginatedTable
-            columns={attendanceColumns()}
-            emptyMessage="No attendance records for this date."
-            getRowKey={(record) => record.id || `${record.personId}-${record.attendanceDate}`}
-            rows={filteredRecords}
-          />
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
-function ProfilePage({ session, onSessionChange }: { session: Session; onSessionChange: (session: Session) => void }) {
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [displayName, setDisplayName] = useState(session.user.displayName);
-  const [email, setEmail] = useState(session.user.email ?? "");
-  const [userIdentifier, setUserIdentifier] = useState(session.user.userIdentifier ?? "");
-  const [newUserIdentifier, setNewUserIdentifier] = useState(session.user.newUserIdentifier ?? "");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
-
-  useEffect(() => {
-    if (!session.user.clientId) return;
-    api
-      .currentTenant(session.token)
-      .then((tenantData) => setTenant(tenantData.tenant))
-      .catch(() => setTenant(null));
-  }, [session.token, session.user.clientId]);
-
-  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setIsSavingProfile(true);
-
-    try {
-      const updated = await api.updateProfile(session.token, {
-        displayName,
-        email,
-        userIdentifier: userIdentifier || null,
-        newUserIdentifier: newUserIdentifier || null
-      });
-      const nextSession = { token: updated.token, user: updated.user };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
-      onSessionChange(nextSession);
-      setMessage("Profile updated");
-    } catch (profileError) {
-      setError(profileError instanceof Error ? profileError.message : "Unable to update profile");
-    } finally {
-      setIsSavingProfile(false);
-    }
-  }
-
-  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setIsSavingPassword(true);
-
-    try {
-      await api.updatePassword(session.token, { currentPassword, newPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setMessage("Password updated");
-    } catch (passwordError) {
-      setError(passwordError instanceof Error ? passwordError.message : "Unable to update password");
-    } finally {
-      setIsSavingPassword(false);
-    }
-  }
-
-  return (
-    <div className="page-grid">
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Profile</p>
-            <h2>Account details</h2>
-          </div>
-        </div>
-        {message ? <Alert tone="success" message={message} /> : null}
-        {error ? <Alert message={error} /> : null}
-        <form className="stack-form" onSubmit={handleProfileSubmit}>
-          <label>
-            Name
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
-          </label>
-          <label>
-            Email
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-          <div className="form-row">
-            <label>
-              {tenant?.userIdentifierLabel || "User ID"}
-              <input value={userIdentifier} onChange={(event) => setUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
-            <label>
-              {tenant?.newUserIdentifierLabel || "New User ID"}
-              <input value={newUserIdentifier} onChange={(event) => setNewUserIdentifier(normalizeIdentifierInput(event.target.value))} />
-            </label>
-          </div>
-          <button className="primary-button fit" type="submit" disabled={isSavingProfile}>
-            {isSavingProfile ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-            Save profile
-          </button>
-        </form>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Security</p>
-            <h2>Change password</h2>
-          </div>
-        </div>
-        <form className="stack-form" onSubmit={handlePasswordSubmit}>
-          <label>
-            Current password
-            <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
-          </label>
-          <label>
-            New password
-            <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} required />
-          </label>
-          <button className="primary-button fit" type="submit" disabled={isSavingPassword}>
-            {isSavingPassword ? <Loader2 className="spin" size={18} /> : <LockKeyhole size={18} />}
-            Update password
-          </button>
-        </form>
-      </section>
-    </div>
-  );
-}
-
-function DashboardPage({
+function Topbar({
   session,
+  tenant,
+  theme,
   onLogout,
-  onSessionChange
+  onThemeChange
 }: {
   session: Session;
+  tenant: Tenant | null;
+  theme: ThemeMode;
   onLogout: () => void;
-  onSessionChange: (session: Session) => void;
+  onThemeChange: (theme: ThemeMode) => void;
 }) {
-  const [view, setView] = useState<View>("dashboard");
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [selectedSystemCode, setSelectedSystemCode] = useState("attendance");
-  const [availableSystems, setAvailableSystems] = useState<AvailableSystem[]>([]);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const timezone = session.user.timezone || "Asia/Colombo";
+  const localDate = new Intl.DateTimeFormat(undefined, { timeZone: timezone, weekday: "short", year: "numeric", month: "short", day: "numeric" }).format(now);
+  const localTime = new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(now);
+  const timezoneLabel = new Intl.DateTimeFormat(undefined, { timeZone: timezone, timeZoneName: "short" }).formatToParts(now).find((part) => part.type === "timeZoneName")?.value ?? timezone;
+
+  return (
+    <header className="topbar">
+      <div>
+        <span>{tenant?.name ?? roleLabel(session.user.role)}</span>
+        <h1>{roleLabel(session.user.role)} workspace</h1>
+      </div>
+      <div className="topbar-actions">
+        <div className="topbar-clock" title={timezone}><Clock3 size={17} /><div><strong>{localTime}</strong><span>{localDate} | {timezoneLabel}</span></div></div>
+        <Button variant="outline" onPress={() => onThemeChange(theme === "dark" ? "light" : "dark")}> 
+          {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
+          {theme === "dark" ? "Dark" : "Light"}
+        </Button>
+        <Popover>
+          <Popover.Trigger>
+            <Button variant="ghost">
+              <Avatar size="sm"><Avatar.Fallback>{initials(session.user.displayName)}</Avatar.Fallback></Avatar>
+              <span>{session.user.displayName}</span>
+              <ChevronDown size={16} />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Content>
+            <Popover.Dialog className="profile-popover">
+              <strong>{session.user.displayName}</strong>
+              <span>{session.user.email ?? session.user.userIdentifier}</span>
+              <Separator />
+              <Button variant="danger" onPress={onLogout}>
+                <LogOut size={17} />
+                Sign out
+              </Button>
+            </Popover.Dialog>
+          </Popover.Content>
+        </Popover>
+      </div>
+    </header>
+  );
+}
+
+function OperationalDashboard({ dashboard, role, token, tenant, user, schedulingEnabled, onNavigate }: { dashboard: DashboardResponse | null; role: Role; token: string; tenant: Tenant | null; user: AuthUser; schedulingEnabled: boolean; onNavigate: (view: ViewKey) => void }) {
+  if (role === "tenant_member") return <MemberDashboard token={token} tenant={tenant} displayName={user.displayName} timezone={user.timezone} schedulingEnabled={schedulingEnabled} onNavigate={() => onNavigate("my-schedule")} />;
+  const total = role === "super_admin" ? dashboard?.clients?.totalClients : dashboard?.users?.totalUsers ?? dashboard?.people?.totalPeople;
+  const active = role === "super_admin" ? dashboard?.clients?.activeClients : dashboard?.people?.activePeople;
+  const present = attendanceCount(dashboard, "present");
+  const absent = attendanceCount(dashboard, "absent");
+
+  return (
+    <div className="main-column">
+        <Card className="hero-panel chart-panel">
+          <Card.Header>
+            <div>
+              <span>Last 7 days</span>
+              <h2>{role === "super_admin" ? "System attendance history" : "Attendance history"}</h2>
+            </div>
+            <Chip variant="soft" color="accent">Live</Chip>
+          </Card.Header>
+          <Card.Content>
+            <AttendanceHistoryChart dashboard={dashboard} />
+          </Card.Content>
+        </Card>
+        <div className="metric-row">
+          <StatCard label={role === "super_admin" ? "Total tenants" : "Total users"} value={numberValue(total)} icon={<UsersRound size={18} />} />
+          <StatCard label="Active" value={numberValue(active)} icon={<ShieldCheck size={18} />} tone="green" />
+          <StatCard label={role === "super_admin" ? "All users" : "Present today"} value={numberValue(role === "super_admin" ? dashboard?.users?.totalUsers : present)} icon={<CalendarCheck size={18} />} tone="violet" />
+          {role === "super_admin" ? <StatCard label="Tenant admins" value={numberValue(dashboard?.users?.tenantAdmins)} icon={<UserRound size={18} />} tone="amber" /> : <StatCard label="Absent today" value={numberValue(absent)} icon={<CalendarCheck size={18} />} tone="amber" />}
+        </div>
+        <DashboardDetails token={token} role={role} tenant={tenant} dashboard={dashboard} onNavigate={(next) => onNavigate(next as ViewKey)} />
+    </div>
+  );
+}
+
+function Workspace({ session, onLogout, onSession }: { session: Session; onLogout: () => void; onSession: (session: Session) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [view, setView] = useState<ViewKey>("dashboard");
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
-  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
-  const [tenantFeatures, setTenantFeatures] = useState<TenantFeature[]>([]);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [features, setFeatures] = useState<TenantFeature[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [theme, setTheme] = useState<ThemeMode>(() => (localStorage.getItem("personnel-management-theme") === "dark" ? "dark" : "light"));
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
-
-    api
-      .dashboard(session.token)
-      .then((data) => {
-        if (isMounted) setDashboard(data);
-      })
-      .catch((dashboardError) => {
-        if (isMounted) setError(dashboardError instanceof Error ? dashboardError.message : "Unable to load dashboard");
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [session.token]);
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("personnel-management-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
-    if (session.user.role !== "tenant_admin" && session.user.role !== "tenant_staff") return;
-    Promise.all([api.currentTenantFeatures(session.token), api.currentTenant(session.token)])
-      .then(([featuresData, tenantData]) => {
-        setTenantFeatures(featuresData.features);
-        setCurrentTenant(tenantData.tenant);
+    api.me(session.token).then(({ user }) => {
+      const next = { token: session.token, user };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      onSession(next);
+    }).catch(() => undefined);
+  }, [onSession, session.token]);
+
+  useEffect(() => {
+    if (session.user.role === "tenant_member") { setDashboard(null); return; }
+    api.dashboard(session.token).then(setDashboard).catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Unable to load dashboard"));
+  }, [reloadKey, session.token, session.user.role]);
+
+  useEffect(() => {
+    if (session.user.role === "super_admin") return;
+    Promise.all([api.currentTenant(session.token), api.currentTenantFeatures(session.token)])
+      .then(([tenantData, featureData]) => {
+        setTenant(tenantData.tenant);
+        setFeatures(featureData.features);
       })
       .catch(() => {
-        setTenantFeatures([]);
-        setCurrentTenant(null);
+        setTenant(null);
+        setFeatures([]);
       });
   }, [session.token, session.user.role]);
 
-  useEffect(() => {
-    if (session.user.role !== "super_admin") return;
-    api
-      .systems(session.token)
-      .then((data) => {
-        setAvailableSystems(data.systems);
-        if (data.systems[0]) setSelectedSystemCode((current) => current || data.systems[0].code);
-      })
-      .catch(() => setAvailableSystems([]));
-  }, [session.token, session.user.role]);
-
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!hasUnsavedChanges) return;
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
-
-  function navigateTo(nextView: View) {
-    if (hasUnsavedChanges && !confirmDiscardChanges()) return;
-    setHasUnsavedChanges(false);
-    setView(nextView);
-  }
-
-  function handleLogoutClick() {
-    if (hasUnsavedChanges && !confirmDiscardChanges()) return;
-    setHasUnsavedChanges(false);
-    onLogout();
-  }
-
-  function handleWorkspaceChange(event: FormEvent<HTMLElement>) {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (target.closest(".table-search")) return;
-    if (target.closest("form.stack-form")) setHasUnsavedChanges(true);
-  }
-
-  function handleWorkspaceSubmitCapture(event: FormEvent<HTMLElement>) {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    if (!target.closest("form.stack-form")) return;
-    if (!confirmSaveChanges()) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-    setHasUnsavedChanges(false);
-  }
-
-  const hasStaffAttendance = tenantFeatures.some((feature) => feature.code === "attendance_staff" && Boolean(feature.enabled));
-  const hasMemberAttendance = tenantFeatures.some((feature) => feature.code === "attendance_member" && Boolean(feature.enabled));
-  const defaultAttendanceView: View | null = hasMemberAttendance
-    ? "attendance-member-record"
-    : hasStaffAttendance
-      ? "attendance-staff-record"
-      : null;
-  const defaultDailyAttendanceView: View | null = hasMemberAttendance
-    ? "attendance-member-daily"
-    : hasStaffAttendance
-      ? "attendance-staff-daily"
-      : null;
-  const attendanceItems = [
-    ...(hasStaffAttendance
-      ? [
-          {
-            active: view === "attendance-staff-record",
-            icon: <ClipboardCheck size={18} />,
-            label: "Record Staff",
-            onClick: () => navigateTo("attendance-staff-record")
-          },
-          {
-            active: view === "attendance-staff-daily",
-            icon: <CalendarDays size={18} />,
-            label: "Daily Staff",
-            onClick: () => navigateTo("attendance-staff-daily")
-          }
-        ]
-      : []),
-    ...(hasMemberAttendance
-      ? [
-          {
-            active: view === "attendance-member-record",
-            icon: <ClipboardCheck size={18} />,
-            label: "Record Members",
-            onClick: () => navigateTo("attendance-member-record")
-          },
-          {
-            active: view === "attendance-member-daily",
-            icon: <CalendarDays size={18} />,
-            label: "Daily Members",
-            onClick: () => navigateTo("attendance-member-daily")
-          }
-        ]
-      : [])
-  ];
+  const page = useMemo(() => {
+    const changed = () => setReloadKey((value) => value + 1);
+    if (view === "dashboard") return session.user.role === "tenant_member" && !tenant ? <Card className="state-card"><Card.Content><Spinner /><span>Loading your workspace</span></Card.Content></Card> : <OperationalDashboard dashboard={dashboard} role={session.user.role} token={session.token} tenant={tenant} user={session.user} schedulingEnabled={features.some((feature) => feature.code === "scheduling" && Boolean(feature.enabled))} onNavigate={setView} />;
+    if (view === "attendance" && tenant) return <AttendancePage token={session.token} tenant={tenant} features={features} onChanged={changed} />;
+    if (view === "people") return session.user.role === "super_admin" ? <TenantsPage token={session.token} onChanged={changed} /> : tenant ? <PeoplePage token={session.token} tenant={tenant} role={session.user.role} onChanged={changed} /> : null;
+    if (view === "systems" && session.user.role === "super_admin") return <SystemsPage token={session.token} />;
+    if (tenant && view === "schedule-calendar") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="calendar" />;
+    if (tenant && view === "schedule-add") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="add" />;
+    if (tenant && view === "schedule-setup") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="setup" />;
+    if (tenant && view === "my-schedule") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="my" />;
+    return <ProfilePage session={session} tenant={tenant} onSession={(next) => { localStorage.setItem(SESSION_KEY, JSON.stringify(next)); onSession(next); }} />;
+  }, [dashboard, features, onSession, session, tenant, view]);
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-mark small">
-            <UsersRound size={21} aria-hidden="true" />
-          </div>
-          <span>Personnel</span>
-        </div>
-
-        <nav aria-label="Primary navigation">
-          <button className={view === "dashboard" ? "active" : ""} type="button" onClick={() => navigateTo("dashboard")}>
-            <LayoutDashboard size={18} />
-            Dashboard
-          </button>
-          {session.user.role === "super_admin" ? (
-            <>
-              <SidebarGroup
-                icon={<Building2 size={18} />}
-                isActive={view === "tenant-register" || view === "tenant-manage"}
-                label="Tenants"
-                items={[
-                  {
-                    active: view === "tenant-register",
-                    icon: <Plus size={18} />,
-                    label: "Tenant Register",
-                    onClick: () => navigateTo("tenant-register")
-                  },
-                  {
-                    active: view === "tenant-manage",
-                    icon: <Building2 size={18} />,
-                    label: "Manage Tenants",
-                    onClick: () => navigateTo("tenant-manage")
-                  }
-                ]}
-              />
-              <SidebarGroup
-                icon={<Settings size={18} />}
-                isActive={view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"}
-                label="Available Systems"
-                items={availableSystems.map((system) => ({
-                  active:
-                    selectedSystemCode === system.code &&
-                    (view === "system-dashboard" || view === "system-settings" || view === "system-tenant-settings"),
-                  icon: <Settings size={18} />,
-                  label: system.name,
-                  onClick: () => {
-                    setSelectedSystemCode(system.code);
-                    navigateTo("system-dashboard");
-                  }
-                }))}
-              />
-            </>
-          ) : null}
-          {session.user.role === "tenant_admin" || session.user.role === "tenant_staff" ? (
-            <>
-              <SidebarGroup
-                icon={<UsersRound size={18} />}
-                isActive={
-                  view === "user-onboard" ||
-                  view === "user-manage" ||
-                  view === "user-detail" ||
-                  view === "member-group-create" ||
-                  view === "member-group-manage" ||
-                  view === "member-group-detail"
-                }
-                label="Users"
-                items={[
-                  {
-                    active: view === "user-onboard",
-                    icon: <UserRound size={18} />,
-                    label: "Onboard Users",
-                    onClick: () => navigateTo("user-onboard")
-                  },
-                  {
-                    active: view === "user-manage" || view === "user-detail",
-                    icon: <UsersRound size={18} />,
-                    label: "Manage Users",
-                    onClick: () => navigateTo("user-manage")
-                  },
-                  {
-                    active: view === "member-group-manage" || view === "member-group-create" || view === "member-group-detail",
-                    icon: <FolderPlus size={18} />,
-                    label: `Manage ${currentTenant?.memberGroupPlural || "Classes"}`,
-                    onClick: () => navigateTo("member-group-manage")
-                  }
-                ]}
-              />
-              {attendanceItems.length > 0 ? (
-                <SidebarGroup
-                  icon={<ClipboardCheck size={18} />}
-                  isActive={
-                    view === "attendance-staff-record" ||
-                    view === "attendance-staff-daily" ||
-                    view === "attendance-member-record" ||
-                    view === "attendance-member-daily"
-                  }
-                  label="Attendance"
-                  items={attendanceItems}
-                />
-              ) : null}
-            </>
-          ) : null}
-          <button className={view === "profile" ? "active" : ""} type="button" onClick={() => navigateTo("profile")}>
-            <UserCog size={18} />
-            Profile
-          </button>
-        </nav>
-      </aside>
-
-      <section className="workspace" onChangeCapture={handleWorkspaceChange} onSubmitCapture={handleWorkspaceSubmitCapture}>
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">{roleLabel(session.user.role)}</p>
-            <h1>{pageTitleFor(view)}</h1>
-          </div>
-          <div className="user-menu">
-            <div className="avatar" aria-hidden="true">
-              <UserRound size={18} />
-            </div>
-            <div>
-              <strong>{session.user.displayName}</strong>
-              <span>{session.user.email || session.user.userIdentifier || ""}</span>
-            </div>
-            <button className="icon-button" type="button" onClick={handleLogoutClick} aria-label="Sign out" title="Sign out">
-              <LogOut size={18} />
-            </button>
-          </div>
-        </header>
-
-        {view === "dashboard" && error ? <Alert message={error} /> : null}
-        {view === "dashboard" && isLoading ? (
-          <div className="loading-state">
-            <Loader2 className="spin" size={24} />
-            Loading dashboard
-          </div>
-        ) : null}
-
-        {view === "dashboard" && !isLoading && dashboard && session.user.role === "super_admin" ? (
-          <SystemDashboard dashboard={dashboard} onOpenTenants={() => navigateTo("tenant-manage")} />
-        ) : null}
-        {view === "dashboard" && !isLoading && dashboard && session.user.role === "tenant_admin" ? (
-          <TenantAdminDashboard
-            dashboard={dashboard}
-            onOpenUsers={() => navigateTo("user-manage")}
-            onCreateUser={() => navigateTo("user-onboard")}
-            onOpenAttendance={defaultAttendanceView ? () => navigateTo(defaultAttendanceView) : null}
-          />
-        ) : null}
-        {view === "dashboard" && !isLoading && dashboard && session.user.role === "tenant_staff" ? (
-          <StaffDashboard
-            dashboard={dashboard}
-            onMarkAttendance={defaultAttendanceView ? () => navigateTo(defaultAttendanceView) : null}
-            onOpenDailyAttendance={defaultDailyAttendanceView ? () => navigateTo(defaultDailyAttendanceView) : null}
-          />
-        ) : null}
-        {view === "dashboard" && !isLoading && session.user.role === "tenant_member" ? <MemberDashboard user={session.user} /> : null}
-        {view === "tenant-register" && session.user.role === "super_admin" ? <TenantRegister token={session.token} /> : null}
-        {view === "tenant-manage" && session.user.role === "super_admin" ? <ManageTenants token={session.token} /> : null}
-        {view === "system-dashboard" && session.user.role === "super_admin" ? (
-          <SystemDashboardPage
-            systemCode={selectedSystemCode}
-            token={session.token}
-            onOpenSystemSettings={() => navigateTo("system-settings")}
-            onOpenTenantSettings={() => navigateTo("system-tenant-settings")}
-          />
-        ) : null}
-        {view === "system-settings" && session.user.role === "super_admin" ? <SystemSettingsPage systemCode={selectedSystemCode} token={session.token} /> : null}
-        {view === "system-tenant-settings" && session.user.role === "super_admin" ? (
-          <TenantSystemSettingsPage systemCode={selectedSystemCode} token={session.token} />
-        ) : null}
-        {view === "user-onboard" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <UserOnboarding token={session.token} actorRole={session.user.role} />
-        ) : null}
-        {view === "user-manage" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <ManageUsers
-            token={session.token}
-            onOpenUser={(userId) => {
-              setSelectedUserId(userId);
-              navigateTo("user-detail");
-            }}
-          />
-        ) : null}
-        {view === "user-detail" && selectedUserId && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <UserDetailsPage token={session.token} actorRole={session.user.role} userId={selectedUserId} onBack={() => navigateTo("user-manage")} />
-        ) : null}
-        {view === "member-group-manage" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <ManageMemberGroups
-            token={session.token}
-            onCreateGroup={() => navigateTo("member-group-create")}
-            onOpenGroup={(groupId) => {
-              setSelectedUserId(groupId);
-              navigateTo("member-group-detail");
-            }}
-          />
-        ) : null}
-        {view === "member-group-create" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <MemberGroupDetailsPage token={session.token} onBack={() => navigateTo("member-group-manage")} />
-        ) : null}
-        {view === "member-group-detail" && selectedUserId && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <MemberGroupDetailsPage token={session.token} groupId={selectedUserId} onBack={() => navigateTo("member-group-manage")} />
-        ) : null}
-        {view === "attendance-staff-record" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <RecordAttendancePage audience="staff" token={session.token} />
-        ) : null}
-        {view === "attendance-staff-daily" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <DailyAttendancePage audience="staff" token={session.token} />
-        ) : null}
-        {view === "attendance-member-record" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <RecordAttendancePage audience="member" token={session.token} />
-        ) : null}
-        {view === "attendance-member-daily" && (session.user.role === "tenant_admin" || session.user.role === "tenant_staff") ? (
-          <DailyAttendancePage audience="member" token={session.token} />
-        ) : null}
-        {view === "profile" ? <ProfilePage session={session} onSessionChange={onSessionChange} /> : null}
+      <Sidebar collapsed={collapsed} features={features} role={session.user.role} view={view} onNavigate={setView} onToggle={() => setCollapsed((current) => !current)} />
+      <section className="workspace">
+        <Topbar session={session} tenant={tenant} theme={theme} onThemeChange={setTheme} onLogout={onLogout} />
+        {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
+        {page}
       </section>
     </main>
   );
@@ -2738,5 +571,5 @@ export default function App() {
   if (!session) return <LoginPage onLogin={setSession} />;
   if (session.user.requiresOnboarding) return <OnboardingPage session={session} onComplete={setSession} />;
 
-  return <DashboardPage session={session} onLogout={handleLogout} onSessionChange={setSession} />;
+  return <Workspace session={session} onLogout={handleLogout} onSession={setSession} />;
 }

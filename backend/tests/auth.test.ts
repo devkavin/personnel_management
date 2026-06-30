@@ -15,6 +15,7 @@ describe("auth token", () => {
       newUserIdentifier: null,
       role: "tenant_admin",
       status: "active",
+      timezone: "Asia/Colombo",
       requiresOnboarding: false
     };
 

@@ -11,13 +11,14 @@ import { memberGroupsRouter } from "./modules/memberGroups/routes.js";
 import { peopleRouter } from "./modules/people/routes.js";
 import { profileRouter } from "./modules/profile/routes.js";
 import { systemsRouter } from "./modules/systems/routes.js";
+import { schedulingRouter } from "./modules/scheduling/routes.js";
 import { AppError } from "./shared/http.js";
 
 export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.APP_ORIGIN, credentials: true }));
+  app.use(cors({ origin: env.APP_ORIGINS.length > 0 ? env.APP_ORIGINS : env.APP_ORIGIN, credentials: true }));
   app.use(express.json());
   app.use(pinoHttp({ enabled: env.NODE_ENV !== "test" }));
 
@@ -34,14 +35,16 @@ export function createApp() {
   app.use("/api/attendance", attendanceRouter);
   app.use("/api/dashboard", dashboardRouter);
   app.use("/api/systems", systemsRouter);
+  app.use("/api/scheduling", schedulingRouter);
 
   app.use((_request, _response, next) => {
     next(new AppError(404, "Route not found"));
   });
 
   const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
-    const statusCode = error instanceof AppError ? error.statusCode : 500;
-    const message = error instanceof Error ? error.message : "Unexpected error";
+    const duplicate = (error as { code?: string }).code === "ER_DUP_ENTRY";
+    const statusCode = error instanceof AppError ? error.statusCode : duplicate ? 409 : 500;
+    const message = duplicate ? "An active or archived record already uses this name" : error instanceof Error ? error.message : "Unexpected error";
     response.status(statusCode).json({ error: { message } });
   };
   app.use(errorHandler);
