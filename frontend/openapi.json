@@ -1,0 +1,1718 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Personnel Management API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "Sign in",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "Register a tenant member",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "currentUser",
+        "summary": "Read the current session",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/tenants": {
+      "get": {
+        "operationId": "listTenants",
+        "summary": "List tenants",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTenant",
+        "summary": "Create a tenant",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/tenants/{id}": {
+      "patch": {
+        "operationId": "updateTenant",
+        "summary": "Update a tenant",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deactivateTenant",
+        "summary": "Deactivate a tenant",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/tenants/current": {
+      "get": {
+        "operationId": "currentTenant",
+        "summary": "Read the current tenant",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/tenants/current/features": {
+      "get": {
+        "operationId": "currentTenantFeatures",
+        "summary": "List current tenant features",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/tenants/{id}/features": {
+      "get": {
+        "operationId": "tenantFeatures",
+        "summary": "List tenant features",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTenantFeatures",
+        "summary": "Update tenant features",
+        "tags": [
+          "Tenants"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/people": {
+      "get": {
+        "operationId": "listPeople",
+        "summary": "List tenant users",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPerson",
+        "summary": "Create a complete account",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/people/onboard": {
+      "post": {
+        "operationId": "onboardPerson",
+        "summary": "Onboard one user",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/people/onboard/bulk": {
+      "post": {
+        "operationId": "bulkOnboardPeople",
+        "summary": "Bulk onboard users",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/people/{id}": {
+      "patch": {
+        "operationId": "updatePerson",
+        "summary": "Update a tenant user",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deactivatePerson",
+        "summary": "Deactivate a tenant user",
+        "tags": [
+          "People"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/member-groups": {
+      "get": {
+        "operationId": "listMemberGroups",
+        "summary": "List member groups",
+        "tags": [
+          "Member Groups"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createMemberGroup",
+        "summary": "Create a member group",
+        "tags": [
+          "Member Groups"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/member-groups/{id}": {
+      "patch": {
+        "operationId": "updateMemberGroup",
+        "summary": "Update a member group",
+        "tags": [
+          "Member Groups"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deactivateMemberGroup",
+        "summary": "Deactivate a member group",
+        "tags": [
+          "Member Groups"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/profile": {
+      "get": {
+        "operationId": "profile",
+        "summary": "Read the current profile",
+        "tags": [
+          "Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateProfile",
+        "summary": "Update the current profile",
+        "tags": [
+          "Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/profile/password": {
+      "patch": {
+        "operationId": "updatePassword",
+        "summary": "Change password",
+        "tags": [
+          "Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/profile/onboarding": {
+      "patch": {
+        "operationId": "completeOnboarding",
+        "summary": "Complete first login",
+        "tags": [
+          "Profile"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/attendance": {
+      "get": {
+        "operationId": "listAttendance",
+        "summary": "List tenant attendance",
+        "tags": [
+          "Attendance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "recordAttendance",
+        "summary": "Record tenant attendance",
+        "tags": [
+          "Attendance"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "operationId": "dashboard",
+        "summary": "Read role dashboard metrics",
+        "tags": [
+          "Dashboard"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/systems": {
+      "get": {
+        "operationId": "listSystems",
+        "summary": "List systems",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/systems/{code}": {
+      "get": {
+        "operationId": "systemDashboard",
+        "summary": "Read a system dashboard",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/systems/{code}/settings": {
+      "get": {
+        "operationId": "systemSettings",
+        "summary": "Read global system settings",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateSystemSettings",
+        "summary": "Update global system settings",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/systems/{code}/tenant-settings": {
+      "get": {
+        "operationId": "systemTenantSettings",
+        "summary": "Read tenant system settings",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/systems/{code}/tenant-settings/{tenantId}": {
+      "put": {
+        "operationId": "updateSystemTenantSettings",
+        "summary": "Update tenant system settings",
+        "tags": [
+          "Available Systems"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/taxonomy": {
+      "get": {
+        "operationId": "scheduleTaxonomy",
+        "summary": "List taxonomy nodes",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createScheduleTaxonomy",
+        "summary": "Create a taxonomy node",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/slots": {
+      "get": {
+        "operationId": "scheduleSlots",
+        "summary": "List day slots",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createScheduleSlot",
+        "summary": "Create a day slot",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/session-templates": {
+      "get": {
+        "operationId": "scheduleSessions",
+        "summary": "List session templates",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createScheduleSession",
+        "summary": "Create a session template",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/week-templates": {
+      "get": {
+        "operationId": "scheduleWeekTemplates",
+        "summary": "List week templates",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createScheduleWeekTemplate",
+        "summary": "Create a week template",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/plans": {
+      "get": {
+        "operationId": "schedulePlans",
+        "summary": "List schedule plans",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSchedulePlan",
+        "summary": "Create a draft schedule",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/plans/{id}": {
+      "patch": {
+        "operationId": "updateSchedulePlan",
+        "summary": "Update a draft schedule",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSchedulePlan",
+        "summary": "Delete a draft schedule",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/plans/{id}/conflicts": {
+      "get": {
+        "operationId": "scheduleConflicts",
+        "summary": "Preview publication conflicts",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/plans/{id}/publish": {
+      "post": {
+        "operationId": "publishSchedule",
+        "summary": "Publish a schedule",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/calendar": {
+      "get": {
+        "operationId": "scheduleCalendar",
+        "summary": "Read the staff calendar",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/my": {
+      "get": {
+        "operationId": "mySchedule",
+        "summary": "Read the member schedule",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    },
+    "/scheduling/my/{assignmentId}": {
+      "get": {
+        "operationId": "myScheduleAssignment",
+        "summary": "Read member session details",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response"
+          },
+          "201": {
+            "description": "Created"
+          },
+          "204": {
+            "description": "No content"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Access denied"
+          },
+          "422": {
+            "description": "Validation failed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {}
+  }
+}

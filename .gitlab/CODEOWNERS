@@ -1,0 +1,20 @@
+# Replace or extend owners as the team grows.
+* @kavin
+
+[Backend Platform]
+/backend/src/platform/ @kavin
+/backend/src/middleware/ @kavin
+/backend/src/database/ @kavin
+
+[Backend Domains]
+/backend/src/modules/attendance/ @kavin
+/backend/src/modules/scheduling/ @kavin
+/backend/src/modules/auth/ @kavin
+/backend/src/modules/clients/ @kavin
+/backend/src/modules/people/ @kavin
+
+[Frontend]
+/frontend/src/app/ @kavin
+/frontend/src/shared/ @kavin
+/frontend/src/features/attendance/ @kavin
+/frontend/src/features/scheduling/ @kavin

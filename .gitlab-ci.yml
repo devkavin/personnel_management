@@ -1,0 +1,98 @@
+stages:
+  - verify
+  - test
+  - build
+  - image
+  - deploy
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+cache:
+  paths:
+    - .npm/
+
+architecture:
+  stage: verify
+  image: node:22-alpine
+  script:
+    - node scripts/check-architecture.mjs
+
+contracts:
+  stage: verify
+  image: node:22-alpine
+  script:
+    - cd backend
+    - npm ci
+    - npm run openapi
+    - cd ../frontend
+    - npm ci
+    - npm run contracts
+    - cd ..
+    - git diff --exit-code -- frontend/openapi.json frontend/src/generated/api-schema.ts
+
+backend:
+  stage: test
+  image: node:22-alpine
+  services:
+    - name: mysql:8.4
+      alias: mysql
+  variables:
+    MYSQL_DATABASE: personnel_management
+    MYSQL_USER: personnel_app
+    MYSQL_PASSWORD: personnel_password
+    MYSQL_ROOT_PASSWORD: root_password
+    DB_HOST: mysql
+    DB_PORT: "3306"
+    DB_NAME: personnel_management
+    DB_USER: personnel_app
+    DB_PASSWORD: personnel_password
+    DB_TIMEZONE: "+05:30"
+    JWT_SECRET: gitlab-ci-secret
+    RUN_DB_TESTS: "true"
+  before_script:
+    - cd backend
+    - npm ci
+  script:
+    - npm run lint
+    - npm run build
+    - npm test
+
+frontend:
+  stage: test
+  image: node:22-alpine
+  before_script:
+    - cd frontend
+    - npm ci
+  script:
+    - npm run lint
+    - npm test
+    - npm run build
+
+docker-images:
+  stage: image
+  image: docker:27
+  services:
+    - docker:27-dind
+  script:
+    - docker build -t "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHA" backend
+    - docker build -t "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHA" frontend
+  rules:
+    - if: '$CI_COMMIT_BRANCH'
+
+deploy-development:
+  stage: deploy
+  script:
+    - echo "Add the development deployment command and protected variables here."
+  environment: development
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+
+deploy-production:
+  stage: deploy
+  script:
+    - echo "Add the production deployment command and protected variables here."
+  environment: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual

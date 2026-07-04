@@ -6,8 +6,8 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
-  APP_ORIGIN: z.string().default("http://localhost:5173"),
-  APP_ORIGINS: z.string().default("http://localhost:5173"),
+  APP_URL: z.string().url().default("http://localhost:8080"),
+  CORS_EXTRA_ORIGINS: z.string().default(""),
   APP_TIMEZONE: z.string().default("Asia/Colombo"),
   DB_TIMEZONE: z.string().regex(/^[+-]\d{2}:\d{2}$/).default("+05:30"),
   DB_HOST: z.string().default("localhost"),
@@ -26,7 +26,10 @@ const parsedEnv = envSchema.parse(process.env);
 
 export const env = {
   ...parsedEnv,
-  APP_ORIGINS: parsedEnv.APP_ORIGINS.split(",")
-    .map((origin) => origin.trim())
+  APP_ORIGINS: [
+    parsedEnv.APP_URL,
+    ...parsedEnv.CORS_EXTRA_ORIGINS.split(",")
+  ]
+    .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean)
 };

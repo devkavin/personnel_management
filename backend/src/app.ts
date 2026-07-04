@@ -3,22 +3,15 @@ import express, { type ErrorRequestHandler } from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
-import { attendanceRouter } from "./modules/attendance/routes.js";
-import { authRouter } from "./modules/auth/routes.js";
-import { clientsRouter } from "./modules/clients/routes.js";
-import { dashboardRouter } from "./modules/dashboard/routes.js";
-import { memberGroupsRouter } from "./modules/memberGroups/routes.js";
-import { peopleRouter } from "./modules/people/routes.js";
-import { profileRouter } from "./modules/profile/routes.js";
-import { systemsRouter } from "./modules/systems/routes.js";
-import { schedulingRouter } from "./modules/scheduling/routes.js";
+import { appModules } from "./modules/catalog.js";
+import { buildOpenApiDocument } from "./platform/openapi.js";
 import { AppError } from "./shared/http.js";
 
 export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.APP_ORIGINS.length > 0 ? env.APP_ORIGINS : env.APP_ORIGIN, credentials: true }));
+  app.use(cors({ origin: env.APP_ORIGINS, credentials: true }));
   app.use(express.json());
   app.use(pinoHttp({ enabled: env.NODE_ENV !== "test" }));
 
@@ -26,16 +19,10 @@ export function createApp() {
     response.json({ status: "ok" });
   });
 
-  app.use("/api/auth", authRouter);
-  app.use("/api/clients", clientsRouter);
-  app.use("/api/tenants", clientsRouter);
-  app.use("/api/people", peopleRouter);
-  app.use("/api/member-groups", memberGroupsRouter);
-  app.use("/api/profile", profileRouter);
-  app.use("/api/attendance", attendanceRouter);
-  app.use("/api/dashboard", dashboardRouter);
-  app.use("/api/systems", systemsRouter);
-  app.use("/api/scheduling", schedulingRouter);
+  app.get("/api/openapi.json", (_request, response) => response.json(buildOpenApiDocument(appModules)));
+  for (const module of appModules) {
+    for (const route of module.routes) app.use(route.path, route.router);
+  }
 
   app.use((_request, _response, next) => {
     next(new AppError(404, "Route not found"));

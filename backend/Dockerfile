@@ -7,6 +7,7 @@ RUN npm ci
 
 FROM deps AS build
 COPY tsconfig.json ./
+COPY scripts/copy-module-migrations.mjs ./scripts/copy-module-migrations.mjs
 COPY src ./src
 RUN npm run build
 
