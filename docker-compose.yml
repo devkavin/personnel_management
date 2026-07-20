@@ -23,30 +23,6 @@ services:
       timeout: 5s
       retries: 12
 
-  mysql:
-    image: mysql:8.4
-    container_name: personnel-mysql
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    environment:
-      TZ: Asia/Colombo
-      MYSQL_DATABASE: personnel_management
-      MYSQL_USER: personnel_app
-      MYSQL_PASSWORD: personnel_password
-      MYSQL_ROOT_PASSWORD: root_password
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysql --protocol=TCP -h 127.0.0.1 -upersonnel_app -ppersonnel_password personnel_management -e 'SELECT 1' >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   backend:
     build:
       context: ./backend
@@ -56,35 +32,139 @@ services:
       resources:
         limits:
           memory: 512M
-    depends_on:
-      mysql:
-        condition: service_healthy
+
+    env_file:
+      - .env
+
     environment:
       NODE_ENV: production
       PORT: 4000
+
       APP_URL: ${APP_URL:-http://localhost:8080}
       CORS_EXTRA_ORIGINS: ${CORS_EXTRA_ORIGINS:-http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173}
+
       APP_TIMEZONE: Asia/Colombo
       DB_TIMEZONE: "+05:30"
       TZ: Asia/Colombo
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: personnel_management
-      DB_USER: personnel_app
-      DB_PASSWORD: personnel_password
-      JWT_SECRET: local-development-secret
+
+      DATABASE_URL: ${DATABASE_URL}
+      # DB_HOST: ${DB_HOST}
+      # DB_PORT: ${DB_PORT}
+      # DB_NAME: ${DB_NAME}
+      # DB_USER: ${DB_USER}
+      # DB_PASSWORD: ${DB_PASSWORD}
+      # DB_SSL: ${DB_SSL:-true}
+
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 8h
-      SUPER_ADMIN_NAME: System Admin
-      SUPER_ADMIN_EMAIL: admin@example.com
-      SUPER_ADMIN_PASSWORD: ChangeMe123!
+
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-System Admin}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+
     ports:
       - "4000:4000"
-    command: sh -c "node dist/database/migrate.js && node dist/database/seeders/seedSuperAdmin.js && node dist/server.js"
+
+    command: >
+      sh -c "
+      node dist/database/migrate.js &&
+      node dist/database/seeders/seedSuperAdmin.js &&
+      node dist/server.js
+      "
+
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
       interval: 10s
       timeout: 5s
       retries: 12
 
-volumes:
-  mysql-data:
+# services:
+#   gateway:
+#     build:
+#       context: ./frontend
+#       args:
+#         VITE_API_BASE_URL: /api
+#     container_name: personnel-gateway
+#     restart: unless-stopped
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 128M
+#     ports:
+#       - "${APP_HTTP_PORT:-8080}:80"
+#     volumes:
+#       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#     depends_on:
+#       backend:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost/gateway-health"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 12
+
+#   # mysql:
+#   #   image: mysql:8.4
+#   #   container_name: personnel-mysql
+#   #   restart: unless-stopped
+#   #   deploy:
+#   #     resources:
+#   #       limits:
+#   #         memory: 512M
+#   #   environment:
+#   #     TZ: Asia/Colombo
+#   #     MYSQL_DATABASE: personnel_management
+#   #     MYSQL_USER: personnel_app
+#   #     MYSQL_PASSWORD: personnel_password
+#   #     MYSQL_ROOT_PASSWORD: root_password
+#   #   ports:
+#   #     - "3306:3306"
+#   #   volumes:
+#   #     - mysql-data:/var/lib/mysql
+#   #   healthcheck:
+#   #     test: ["CMD-SHELL", "mysql --protocol=TCP -h 127.0.0.1 -upersonnel_app -ppersonnel_password personnel_management -e 'SELECT 1' >/dev/null 2>&1"]
+#   #     interval: 10s
+#   #     timeout: 5s
+#   #     retries: 12
+
+#   backend:
+#     build:
+#       context: ./backend
+#     container_name: personnel-backend
+#     restart: unless-stopped
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 512M
+#     depends_on:
+#       mysql:
+#         condition: service_healthy
+#     environment:
+#       NODE_ENV: production
+#       PORT: 4000
+#       APP_URL: ${APP_URL:-http://localhost:8080}
+#       CORS_EXTRA_ORIGINS: ${CORS_EXTRA_ORIGINS:-http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173}
+#       APP_TIMEZONE: Asia/Colombo
+#       DB_TIMEZONE: "+05:30"
+#       TZ: Asia/Colombo
+#       DB_HOST: mysql
+#       DB_PORT: 3306
+#       DB_NAME: personnel_management
+#       DB_USER: personnel_app
+#       DB_PASSWORD: personnel_password
+#       JWT_SECRET: local-development-secret
+#       JWT_EXPIRES_IN: 8h
+#       SUPER_ADMIN_NAME: System Admin
+#       SUPER_ADMIN_EMAIL: admin@example.com
+#       SUPER_ADMIN_PASSWORD: ChangeMe123!
+#     ports:
+#       - "4000:4000"
+#     command: sh -c "node dist/database/migrate.js && node dist/database/seeders/seedSuperAdmin.js && node dist/server.js"
+#     healthcheck:
+#       test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 12
+
+# volumes:
+#   mysql-data:
