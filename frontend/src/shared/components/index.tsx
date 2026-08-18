@@ -9,8 +9,8 @@ export function SearchableSelect({ label, value, options, placeholder = "Select"
   return (
     <div className="field-stack select-field">
       {label ? <span className="field-label">{label}</span> : null}
-      <Autocomplete className="app-select" fullWidth selectedKey={value || null} onClear={() => onChange("")} onSelectionChange={(key: Key | null) => onChange(key?.toString() ?? "")} isDisabled={disabled}>
-        <Autocomplete.Trigger>
+      <Autocomplete aria-label={label ?? placeholder} className="app-select" fullWidth selectedKey={value || null} onClear={() => onChange("")} onSelectionChange={(key: Key | null) => onChange(key?.toString() ?? "")} isDisabled={disabled}>
+        <Autocomplete.Trigger aria-label={label ?? placeholder}>
           <Autocomplete.Value>{selected?.label ?? placeholder}</Autocomplete.Value>
           {clearable ? <Autocomplete.ClearButton type="button" /> : null}
           <Autocomplete.Indicator />
@@ -98,14 +98,16 @@ export function DataTable<T>({ rows, columns, rowKey, searchText, empty = "No re
     <Card className="data-card">
       <Card.Content>
         <div className="table-toolbar">
-          <SearchField value={input} onChange={setInput} className="table-search">
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder="Search records" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applySearch(); } }} />
-              {input ? <SearchField.ClearButton onPress={() => { setInput(""); setQuery(""); setPage(1); }} /> : null}
-              <Button size="sm" variant="primary" type="button" onPress={applySearch}><Search size={15} />Search</Button>
-            </SearchField.Group>
-          </SearchField>
+          <div className="table-search-wrap">
+            <SearchField value={input} onChange={setInput} className="table-search" aria-label="Search records">
+              <SearchField.Group>
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder="Search records" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); applySearch(); } }} />
+                {input ? <SearchField.ClearButton onPress={() => { setInput(""); setQuery(""); setPage(1); }} /> : null}
+              </SearchField.Group>
+            </SearchField>
+            <Button size="sm" variant="primary" type="button" onPress={applySearch}><Search size={15} />Search</Button>
+          </div>
           <SearchableSelect value={String(pageSize)} onChange={(value) => { setPageSize(Number(value)); setPage(1); }} options={[10, 25, 50].map((size) => ({ label: `${size} rows`, value: String(size) }))} />
         </div>
         <Table aria-label="Records">
@@ -194,7 +196,7 @@ export function ConfirmAction({ label, title, description, danger = false, disab
 }
 
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) {
-  return <div className="page-header"><div>{eyebrow ? <span>{eyebrow}</span> : null}<h2>{title}</h2>{description ? <p>{description}</p> : null}</div>{actions ? <div className="page-actions">{actions}</div> : null}</div>;
+  return <div className="page-header"><div>{eyebrow ? <span>{eyebrow}</span> : null}<h1>{title}</h1>{description ? <p>{description}</p> : null}</div>{actions ? <div className="page-actions">{actions}</div> : null}</div>;
 }
 
 export function LoadingState() { return <Card className="state-card"><Card.Content><Spinner /><span>Loading data</span></Card.Content></Card>; }

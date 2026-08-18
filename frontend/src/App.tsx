@@ -238,8 +238,9 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
           <div className="brand-block">
             <div className="brand-mark"><CalendarCheck size={24} /></div>
             <div>
-              <span>Personnel OS</span>
-              <h1>{mode === "login" ? "Sign in to your workspace." : "Create your member account."}</h1>
+              <span>Personnel Management</span>
+              <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
+              <p>{mode === "login" ? "Sign in to continue to your workspace." : "Register with the details provided by your organization."}</p>
             </div>
           </div>
         </Card.Header>
@@ -308,7 +309,10 @@ function OnboardingPage({ session, onComplete }: { session: Session; onComplete:
     <main className="login-shell">
       <Card className="login-card">
         <Card.Header>
-          <h1>Complete profile</h1>
+          <div className="brand-block compact">
+            <div className="brand-mark"><UserRound size={24} /></div>
+            <div><span>Account setup</span><h1>Complete your profile</h1><p>Add the details you will use in your workspace.</p></div>
+          </div>
         </Card.Header>
         <Card.Content>
           <form className="login-form" onSubmit={handleSubmit}>
@@ -362,7 +366,7 @@ function Sidebar({
 
   function navButton(item: NavigationItem) {
     if (!item.view) return null;
-    const button = <Button key={item.view} className={view === item.view ? "active" : ""} variant="ghost" isIconOnly={collapsed} onPress={() => onNavigate(item.view!)}>{item.icon}{!collapsed ? <span>{item.label}</span> : null}</Button>;
+    const button = <Button key={item.view} aria-current={view === item.view ? "page" : undefined} className={view === item.view ? "active" : ""} variant="ghost" isIconOnly={collapsed} onPress={() => onNavigate(item.view!)}>{item.icon}{!collapsed ? <span>{item.label}</span> : null}</Button>;
     return collapsed ? <Tooltip key={item.view}><Tooltip.Trigger>{button}</Tooltip.Trigger><Tooltip.Content placement="right">{item.label}</Tooltip.Content></Tooltip> : button;
   }
 
@@ -422,16 +426,12 @@ function Topbar({
 
   return (
     <header className="topbar">
-      <div>
-        <span>{tenant?.name ?? roleLabel(session.user.role)}</span>
+      <div className="workspace-context">
+        <span>{tenant?.name ?? "Personnel Management"}</span>
         <h1>{roleLabel(session.user.role)} workspace</h1>
       </div>
       <div className="topbar-actions">
         <div className="topbar-clock" title={timezone}><Clock3 size={17} /><div><strong>{localTime}</strong><span>{localDate} | {timezoneLabel}</span></div></div>
-        <Button variant="outline" onPress={() => onThemeChange(theme === "dark" ? "light" : "dark")}> 
-          {theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}
-          {theme === "dark" ? "Dark" : "Light"}
-        </Button>
         <Popover>
           <Popover.Trigger>
             <Button variant="ghost">
@@ -445,6 +445,10 @@ function Topbar({
               <strong>{session.user.displayName}</strong>
               <span>{session.user.email ?? session.user.userIdentifier}</span>
               <Separator />
+              <Button variant="ghost" onPress={() => onThemeChange(theme === "dark" ? "light" : "dark")}>
+                {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+                {theme === "dark" ? "Use light theme" : "Use dark theme"}
+              </Button>
               <Button variant="danger" onPress={onLogout}>
                 <LogOut size={17} />
                 Sign out
@@ -466,6 +470,7 @@ function OperationalDashboard({ dashboard, role, token, tenant, user, scheduling
 
   return (
     <div className="main-column">
+      <div className="dashboard-overview">
         <Card className="hero-panel chart-panel">
           <Card.Header>
             <div>
@@ -484,6 +489,7 @@ function OperationalDashboard({ dashboard, role, token, tenant, user, scheduling
           <StatCard label={role === "super_admin" ? "All users" : "Present today"} value={numberValue(role === "super_admin" ? dashboard?.users?.totalUsers : present)} icon={<CalendarCheck size={18} />} tone="violet" />
           {role === "super_admin" ? <StatCard label="Tenant admins" value={numberValue(dashboard?.users?.tenantAdmins)} icon={<UserRound size={18} />} tone="amber" /> : <StatCard label="Absent today" value={numberValue(absent)} icon={<CalendarCheck size={18} />} tone="amber" />}
         </div>
+      </div>
         <DashboardDetails token={token} role={role} tenant={tenant} dashboard={dashboard} onNavigate={(next) => onNavigate(next as ViewKey)} />
     </div>
   );
@@ -492,7 +498,7 @@ function OperationalDashboard({ dashboard, role, token, tenant, user, scheduling
 function Workspace({ session, onLogout, onSession }: { session: Session; onLogout: () => void; onSession: (session: Session) => void }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const view = viewForPath(location.pathname);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -566,8 +572,10 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
       <Sidebar collapsed={collapsed} features={features} role={session.user.role} view={view} onNavigate={navigateToView} onToggle={() => setCollapsed((current) => !current)} />
       <section className="workspace">
         <Topbar session={session} tenant={tenant} theme={theme} onThemeChange={setTheme} onLogout={onLogout} />
-        {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
-        {page}
+        <div className="workspace-content">
+          {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
+          {page}
+        </div>
       </section>
     </main>
   );
