@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { databaseDate, expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "../src/modules/scheduling/domain.js";
+import { databaseDate, expandTemplateEntries, generateScheduleDates, regattaDatesOverlap, validateRegattaDates, wouldCreateTaxonomyCycle } from "../src/modules/scheduling/domain.js";
 
 describe("scheduling domain", () => {
   it("normalizes MySQL date objects before publishing", () => {
@@ -29,5 +29,16 @@ describe("scheduling domain", () => {
     expect(wouldCreateTaxonomyCycle(1, 3, parents)).toBe(true);
     expect(wouldCreateTaxonomyCycle(2, 4, parents)).toBe(false);
     expect(wouldCreateTaxonomyCycle(3, null, parents)).toBe(false);
+  });
+
+  it("requires regattas to have an ordered date range", () => {
+    expect(validateRegattaDates("2026-06-19", "2026-06-22")).toEqual({ startDate: "2026-06-19", endDate: "2026-06-22" });
+    expect(() => validateRegattaDates("2026-06-22", "2026-06-22")).toThrow(/earlier/);
+    expect(() => validateRegattaDates("2026-06-23", "2026-06-22")).toThrow(/earlier/);
+  });
+
+  it("detects inclusive regatta date collisions but permits adjacent ranges", () => {
+    expect(regattaDatesOverlap("2026-06-19", "2026-06-22", "2026-06-22", "2026-06-24")).toBe(true);
+    expect(regattaDatesOverlap("2026-06-19", "2026-06-22", "2026-06-23", "2026-06-25")).toBe(false);
   });
 });

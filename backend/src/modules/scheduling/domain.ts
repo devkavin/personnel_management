@@ -29,6 +29,26 @@ function parseDate(value: string) {
   return date;
 }
 
+/** Validates a regatta's inclusive calendar-date range. */
+export function validateRegattaDates(startDate: string, endDate: string) {
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+  if (start >= end) throw new AppError(422, "Regatta start date must be earlier than end date");
+  return { startDate: isoDate(start), endDate: isoDate(end) };
+}
+
+/** Returns true when two inclusive calendar-date ranges share at least one date. */
+export function regattaDatesOverlap(
+  startDate: string,
+  endDate: string,
+  otherStartDate: string,
+  otherEndDate: string
+) {
+  const range = validateRegattaDates(startDate, endDate);
+  const otherRange = validateRegattaDates(otherStartDate, otherEndDate);
+  return range.startDate <= otherRange.endDate && range.endDate >= otherRange.startDate;
+}
+
 export function generateScheduleDates(startDate: string, endDate: string, mode: "day" | "week" | "range") {
   const start = parseDate(startDate);
   const end = parseDate(endDate);

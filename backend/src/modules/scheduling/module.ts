@@ -7,6 +7,9 @@ export const schedulingModule = defineModule({
   key: "scheduling",
   routes: [{ path: "/api/scheduling", router: schedulingRouter }],
   openApi: moduleOpenApi("Scheduling", [
+    { method: "get", path: "/scheduling/regattas", operationId: "regattas", summary: "List regattas" },
+    { method: "post", path: "/scheduling/regattas", operationId: "createRegatta", summary: "Create a regatta" },
+    { method: "patch", path: "/scheduling/regattas/{id}/end-date", operationId: "updateRegattaEndDate", summary: "Update a regatta end date" },
     { method: "get", path: "/scheduling/taxonomy", operationId: "scheduleTaxonomy", summary: "List taxonomy nodes" },
     { method: "post", path: "/scheduling/taxonomy", operationId: "createScheduleTaxonomy", summary: "Create a taxonomy node" },
     { method: "get", path: "/scheduling/slots", operationId: "scheduleSlots", summary: "List day slots" },

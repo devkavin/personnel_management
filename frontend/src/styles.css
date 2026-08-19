@@ -1096,13 +1096,15 @@ body {
 }
 
 .schedule-editor-modal,
-.week-editor-modal {
+.week-editor-modal,
+.regatta-editor-modal {
   width: min(960px, calc(100vw - 28px));
   max-height: min(88vh, 900px);
 }
 
 .schedule-editor-modal [data-slot="modal-body"],
-.week-editor-modal [data-slot="modal-body"] {
+.week-editor-modal [data-slot="modal-body"],
+.regatta-editor-modal [data-slot="modal-body"] {
   overflow-y: auto;
 }
 

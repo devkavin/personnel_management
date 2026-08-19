@@ -5,7 +5,7 @@ import { pool } from "../../../database/pool.js";
 import { requireAuth, requireRoles } from "../../../middleware/auth.js";
 import { requireTenantSystem } from "../../../middleware/systems.js";
 import { AppError, asyncHandler, validate } from "../../../shared/http.js";
-import { databaseDate, expandTemplateEntries, generateScheduleDates, wouldCreateTaxonomyCycle } from "../domain.js";
+import { databaseDate, expandTemplateEntries, generateScheduleDates, validateRegattaDates, wouldCreateTaxonomyCycle } from "../domain.js";
 
 const router = Router();
 const statusSchema = z.enum(["active", "archived"]);
@@ -56,8 +56,15 @@ const planSchema = z.object({
   weekTemplateId: z.number().int().positive().nullable().optional(),
   entries: z.array(weekEntrySchema).default([]),
   groupIds: idList,
-  memberIds: idList
+  memberIds: idList,
+  regattaIds: idList
 });
+const regattaSchema = z.object({
+  regattaName: z.string().trim().min(2).max(190),
+  startDate: z.string(),
+  endDate: z.string()
+});
+const regattaEndDateSchema = z.object({ endDate: z.string() });
 
 function tenantId(request: Request) {
   if (!request.user?.clientId) throw new AppError(403, "Scheduling is only available inside a tenant");
@@ -74,6 +81,16 @@ async function assertTenantResource(connection: PoolConnection | typeof pool, ta
   const statusClause = active && table !== "users" ? " AND status = 'active'" : active ? " AND status = 'active'" : "";
   const [rows] = await connection.query<RowDataPacket[]>(`SELECT id FROM ${table} WHERE id = :id AND client_id = :clientId${statusClause} LIMIT 1`, { id, clientId });
   if (!rows[0]) throw new AppError(422, "Selected scheduling resource is unavailable");
+}
+
+async function assertTenantRegattas(connection: PoolConnection, regattaIds: number[], clientId: number) {
+  for (const regattaId of new Set(regattaIds)) {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      "SELECT id FROM regattas WHERE id = :regattaId AND client_id = :clientId LIMIT 1",
+      { regattaId, clientId }
+    );
+    if (!rows[0]) throw new AppError(422, "Selected regatta is unavailable");
+  }
 }
 
 async function taxonomyPath(connection: PoolConnection, nodeId: number, clientId: number) {
@@ -110,6 +127,82 @@ async function replaceWeekEntries(connection: PoolConnection, weekId: number, cl
 }
 
 router.use(requireAuth, requireTenantSystem("scheduling"));
+
+router.get("/regattas", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request);
+  const [regattas] = await pool.query(
+    `SELECT regatta.id AS regattaId, regatta.name AS regattaName, regatta.start_date AS startDate, regatta.end_date AS endDate,
+     regatta.created_by_user_id AS createdBy, regatta.created_at AS createdDate, regatta.modified_by_user_id AS modifiedBy,
+     regatta.modified_at AS modifiedDate
+     FROM regattas regatta WHERE regatta.client_id = :clientId ORDER BY regatta.start_date, regatta.end_date, regatta.id`,
+    { clientId }
+  );
+  response.json({ regattas });
+}));
+
+router.post("/regattas", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request);
+  const body = validate(regattaSchema, request.body);
+  const dates = validateRegattaDates(body.startDate, body.endDate);
+  const connection = await pool.getConnection();
+  try {
+    // Serializable range locking prevents two concurrent requests from inserting overlapping regattas.
+    await connection.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+    await connection.beginTransaction();
+    const [overlaps] = await connection.query<RowDataPacket[]>(
+      `SELECT id FROM regattas WHERE client_id = :clientId AND start_date <= :endDate AND end_date >= :startDate FOR UPDATE`,
+      { clientId, ...dates }
+    );
+    if (overlaps[0]) throw new AppError(409, "A regatta already occupies part of this date range");
+    const [result] = await connection.query(
+      `INSERT INTO regattas (client_id, name, start_date, end_date, created_by_user_id, modified_by_user_id)
+       VALUES (:clientId, :regattaName, :startDate, :endDate, :userId, :userId)`,
+      { clientId, regattaName: body.regattaName, ...dates, userId: request.user!.id }
+    );
+    await connection.commit();
+    response.status(201).json({ regattaId: (result as { insertId: number }).insertId });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
+
+router.patch("/regattas/:id/end-date", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
+  const clientId = tenantId(request);
+  const regattaId = Number(request.params.id);
+  if (!Number.isSafeInteger(regattaId) || regattaId <= 0) throw new AppError(422, "Invalid regatta id");
+  const body = validate(regattaEndDateSchema, request.body);
+  const connection = await pool.getConnection();
+  try {
+    await connection.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+    await connection.beginTransaction();
+    const [existing] = await connection.query<RowDataPacket[]>(
+      "SELECT start_date AS startDate FROM regattas WHERE id = :regattaId AND client_id = :clientId FOR UPDATE",
+      { regattaId, clientId }
+    );
+    if (!existing[0]) throw new AppError(404, "Regatta not found");
+    const dates = validateRegattaDates(databaseDate(existing[0].startDate as string | Date), body.endDate);
+    const [overlaps] = await connection.query<RowDataPacket[]>(
+      `SELECT id FROM regattas WHERE client_id = :clientId AND id <> :regattaId
+       AND start_date <= :endDate AND end_date >= :startDate FOR UPDATE`,
+      { clientId, regattaId, ...dates }
+    );
+    if (overlaps[0]) throw new AppError(409, "A regatta already occupies part of this date range");
+    await connection.query(
+      "UPDATE regattas SET end_date = :endDate, modified_by_user_id = :userId WHERE id = :regattaId AND client_id = :clientId",
+      { endDate: dates.endDate, userId: request.user!.id, regattaId, clientId }
+    );
+    await connection.commit();
+    response.json({ message: "Regatta end date updated" });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}));
 
 router.get("/taxonomy", asyncHandler(async (request, response) => {
   const clientId = tenantId(request);
@@ -375,7 +468,8 @@ router.get("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(
   const clientId = tenantId(request); const fromDate = String(request.query.fromDate ?? "1900-01-01"); const toDate = String(request.query.toDate ?? "2999-12-31");
   const [plans] = await pool.query(`SELECT plan.id, plan.name, plan.generation_mode AS mode, plan.start_date AS startDate, plan.end_date AS endDate, plan.status, plan.owner_user_id AS ownerUserId, owner.display_name AS ownerName, plan.published_at AS publishedAt, COUNT(occurrence.id) AS occurrenceCount,
     (SELECT COALESCE(JSON_ARRAYAGG(target.member_group_id), JSON_ARRAY()) FROM schedule_plan_target_groups target WHERE target.plan_id = plan.id) AS groupIds,
-    (SELECT COALESCE(JSON_ARRAYAGG(target.user_id), JSON_ARRAY()) FROM schedule_plan_target_users target WHERE target.plan_id = plan.id) AS memberIds
+    (SELECT COALESCE(JSON_ARRAYAGG(target.user_id), JSON_ARRAY()) FROM schedule_plan_target_users target WHERE target.plan_id = plan.id) AS memberIds,
+    (SELECT COALESCE(JSON_ARRAYAGG(link.regatta_id), JSON_ARRAY()) FROM schedule_plan_regattas link WHERE link.plan_id = plan.id) AS regattaIds
     FROM schedule_plans plan INNER JOIN users owner ON owner.id = plan.owner_user_id LEFT JOIN schedule_occurrences occurrence ON occurrence.plan_id = plan.id WHERE plan.client_id = :clientId AND plan.end_date >= :fromDate AND plan.start_date <= :toDate GROUP BY plan.id, plan.name, plan.generation_mode, plan.start_date, plan.end_date, plan.status, plan.owner_user_id, owner.display_name, plan.published_at ORDER BY plan.start_date DESC`, { clientId, fromDate, toDate });
   response.json({ plans });
 }));
@@ -392,6 +486,7 @@ router.post("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler
     let entries = body.entries ?? [];
     const groupIds = body.groupIds ?? [];
     const memberIds = body.memberIds ?? [];
+    const regattaIds = body.regattaIds ?? [];
     if (body.weekTemplateId) {
       await assertTenantResource(connection, "schedule_week_templates", body.weekTemplateId, clientId, true);
       const [rows] = await connection.query<RowDataPacket[]>(`SELECT entry.weekday, entry.slot_id AS slotId, entry.session_template_id AS sessionTemplateId FROM schedule_week_template_entries entry INNER JOIN schedule_week_templates week ON week.id = entry.week_template_id WHERE entry.week_template_id = :weekTemplateId AND week.client_id = :clientId`, { weekTemplateId: body.weekTemplateId, clientId });
@@ -401,11 +496,13 @@ router.post("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler
     const generated = expandTemplateEntries(dates, entries); if (!generated.length) throw new AppError(422, "The selected template has no sessions in this date range");
     for (const groupId of [...new Set(groupIds)]) await assertTenantResource(connection, "member_groups", groupId, clientId, true);
     for (const memberId of [...new Set(memberIds)]) { await assertTenantResource(connection, "users", memberId, clientId, true); const [member] = await connection.query<RowDataPacket[]>("SELECT role FROM users WHERE id = :memberId AND client_id = :clientId", { memberId, clientId }); if (member[0]?.role !== "tenant_member") throw new AppError(422, "Schedules can only be assigned to tenant members"); }
+    await assertTenantRegattas(connection, regattaIds, clientId);
     if (!groupIds.length && !memberIds.length) throw new AppError(422, "Select at least one class or member");
     const [result] = await connection.query(`INSERT INTO schedule_plans (client_id, name, generation_mode, start_date, end_date, source_week_template_id, owner_user_id) VALUES (:clientId, :name, :mode, :startDate, :endDate, :weekTemplateId, :userId)`, { clientId, ...body, weekTemplateId: body.weekTemplateId ?? null, userId: request.user!.id });
     const planId = (result as { insertId: number }).insertId;
     for (const groupId of [...new Set(groupIds)]) await connection.query("INSERT INTO schedule_plan_target_groups (plan_id, member_group_id) VALUES (:planId, :groupId)", { planId, groupId });
     for (const memberId of [...new Set(memberIds)]) await connection.query("INSERT INTO schedule_plan_target_users (plan_id, user_id) VALUES (:planId, :memberId)", { planId, memberId });
+    for (const regattaId of [...new Set(regattaIds)]) await connection.query("INSERT INTO schedule_plan_regattas (plan_id, regatta_id) VALUES (:planId, :regattaId)", { planId, regattaId });
     const templateCache = new Map<number, { snapshot: Record<string, unknown>; path: string[] }>();
     for (const entry of generated) {
       await assertTenantResource(connection, "schedule_day_slots", entry.slotId, clientId, true); await assertTenantResource(connection, "schedule_session_templates", entry.sessionTemplateId, clientId, true);
@@ -422,7 +519,7 @@ router.post("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler
 
 router.patch("/plans/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const planId = Number(request.params.id);
-  const body = validate(z.object({ name: z.string().trim().min(2).max(190).optional(), startDate: z.string().optional(), endDate: z.string().optional(), groupIds: idList.optional(), memberIds: idList.optional() }), request.body);
+  const body = validate(z.object({ name: z.string().trim().min(2).max(190).optional(), startDate: z.string().optional(), endDate: z.string().optional(), groupIds: idList.optional(), memberIds: idList.optional(), regattaIds: idList.optional() }), request.body);
   const connection = await pool.getConnection();
   try { await connection.beginTransaction();
     const [plans] = await connection.query<RowDataPacket[]>("SELECT id, generation_mode AS mode, start_date AS startDate, end_date AS endDate FROM schedule_plans WHERE id = :planId AND client_id = :clientId AND status = 'draft' FOR UPDATE", { planId, clientId });
@@ -474,6 +571,11 @@ router.patch("/plans/:id", requireRoles("tenant_admin", "tenant_staff"), asyncHa
       await connection.query("DELETE FROM schedule_plan_target_users WHERE plan_id = :planId", { planId });
       for (const groupId of [...new Set(groupIds)]) await connection.query("INSERT INTO schedule_plan_target_groups (plan_id, member_group_id) VALUES (:planId, :groupId)", { planId, groupId });
       for (const memberId of [...new Set(memberIds)]) await connection.query("INSERT INTO schedule_plan_target_users (plan_id, user_id) VALUES (:planId, :memberId)", { planId, memberId });
+    }
+    if (body.regattaIds !== undefined) {
+      await assertTenantRegattas(connection, body.regattaIds, clientId);
+      await connection.query("DELETE FROM schedule_plan_regattas WHERE plan_id = :planId", { planId });
+      for (const regattaId of [...new Set(body.regattaIds)]) await connection.query("INSERT INTO schedule_plan_regattas (plan_id, regatta_id) VALUES (:planId, :regattaId)", { planId, regattaId });
     }
     await connection.commit(); response.json({ message: "Draft schedule updated" });
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
