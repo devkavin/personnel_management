@@ -476,7 +476,14 @@ router.get("/plans", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(
 
 router.get("/calendar", requireRoles("tenant_admin", "tenant_staff"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const fromDate = String(request.query.fromDate ?? "1900-01-01"); const toDate = String(request.query.toDate ?? "2999-12-31");
-  const [occurrences] = await pool.query(`SELECT occurrence.id, occurrence.plan_id AS planId, plan.name AS planName, occurrence.schedule_date AS scheduleDate, occurrence.slot_id AS slotId, slot.name AS slotName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, occurrence.status FROM schedule_occurrences occurrence INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = occurrence.slot_id WHERE occurrence.client_id = :clientId AND occurrence.schedule_date BETWEEN :fromDate AND :toDate ORDER BY occurrence.schedule_date, slot.sort_order`, { clientId, fromDate, toDate });
+  const regattaId = request.query.regattaId === undefined ? null : Number(request.query.regattaId);
+  if (regattaId !== null && (!Number.isSafeInteger(regattaId) || regattaId <= 0)) throw new AppError(422, "Invalid regatta id");
+  const [occurrences] = await pool.query(`SELECT occurrence.id, occurrence.plan_id AS planId, plan.name AS planName, occurrence.schedule_date AS scheduleDate, occurrence.slot_id AS slotId, slot.name AS slotName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, occurrence.status,
+    (SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('id', regatta.id, 'name', regatta.name, 'startDate', regatta.start_date, 'endDate', regatta.end_date)), JSON_ARRAY()) FROM schedule_plan_regattas link INNER JOIN regattas regatta ON regatta.id = link.regatta_id WHERE link.plan_id = plan.id) AS regattas
+    FROM schedule_occurrences occurrence INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = occurrence.slot_id
+    WHERE occurrence.client_id = :clientId AND occurrence.schedule_date BETWEEN :fromDate AND :toDate
+      AND (:regattaId IS NULL OR EXISTS (SELECT 1 FROM schedule_plan_regattas filter_link WHERE filter_link.plan_id = plan.id AND filter_link.regatta_id = :regattaId))
+    ORDER BY occurrence.schedule_date, slot.sort_order`, { clientId, fromDate, toDate, regattaId });
   response.json({ occurrences });
 }));
 
@@ -622,13 +629,22 @@ router.post("/assignments/:id/cancel", requireRoles("tenant_admin", "tenant_staf
 
 router.get("/my", requireRoles("tenant_member"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const fromDate = String(request.query.fromDate ?? "1900-01-01"); const toDate = String(request.query.toDate ?? "2999-12-31");
-  const [assignments] = await pool.query(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, assignment.slot_id AS slotId, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, occurrence.plan_id AS planId, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, assignment.status FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' AND assignment.schedule_date BETWEEN :fromDate AND :toDate ORDER BY assignment.schedule_date, slot.sort_order`, { clientId, userId: request.user!.id, fromDate, toDate });
+  const regattaId = request.query.regattaId === undefined ? null : Number(request.query.regattaId);
+  if (regattaId !== null && (!Number.isSafeInteger(regattaId) || regattaId <= 0)) throw new AppError(422, "Invalid regatta id");
+  const [assignments] = await pool.query(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, assignment.slot_id AS slotId, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, occurrence.plan_id AS planId, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath, assignment.status,
+    (SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('id', regatta.id, 'name', regatta.name, 'startDate', regatta.start_date, 'endDate', regatta.end_date)), JSON_ARRAY()) FROM schedule_plan_regattas link INNER JOIN regattas regatta ON regatta.id = link.regatta_id WHERE link.plan_id = plan.id) AS regattas
+    FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id
+    WHERE assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' AND assignment.schedule_date BETWEEN :fromDate AND :toDate
+      AND (:regattaId IS NULL OR EXISTS (SELECT 1 FROM schedule_plan_regattas filter_link WHERE filter_link.plan_id = plan.id AND filter_link.regatta_id = :regattaId))
+    ORDER BY assignment.schedule_date, slot.sort_order`, { clientId, userId: request.user!.id, fromDate, toDate, regattaId });
   response.json({ assignments });
 }));
 
 router.get("/my/:assignmentId", requireRoles("tenant_member"), asyncHandler(async (request, response) => {
   const clientId = tenantId(request); const assignmentId = Number(request.params.assignmentId);
-  const [assignments] = await pool.query<RowDataPacket[]>(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.id = :assignmentId AND assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' LIMIT 1`, { assignmentId, clientId, userId: request.user!.id });
+  const [assignments] = await pool.query<RowDataPacket[]>(`SELECT assignment.id, assignment.schedule_date AS scheduleDate, slot.name AS slotName, TIME_FORMAT(slot.start_time, '%H:%i') AS slotStartTime, plan.name AS planName, occurrence.session_snapshot AS sessionSnapshot, occurrence.taxonomy_path_snapshot AS taxonomyPath,
+    (SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT('id', regatta.id, 'name', regatta.name, 'startDate', regatta.start_date, 'endDate', regatta.end_date)), JSON_ARRAY()) FROM schedule_plan_regattas link INNER JOIN regattas regatta ON regatta.id = link.regatta_id WHERE link.plan_id = plan.id) AS regattas
+    FROM schedule_assignments assignment INNER JOIN schedule_occurrences occurrence ON occurrence.id = assignment.occurrence_id INNER JOIN schedule_plans plan ON plan.id = occurrence.plan_id INNER JOIN schedule_day_slots slot ON slot.id = assignment.slot_id WHERE assignment.id = :assignmentId AND assignment.client_id = :clientId AND assignment.member_user_id = :userId AND assignment.status = 'active' LIMIT 1`, { assignmentId, clientId, userId: request.user!.id });
   if (!assignments[0]) throw new AppError(404, "Schedule assignment not found");
   response.json({ assignment: assignments[0] });
 }));

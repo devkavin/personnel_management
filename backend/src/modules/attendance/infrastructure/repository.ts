@@ -1,4 +1,4 @@
-import type { Pool } from "mysql2/promise";
+import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { Role } from "../../../shared/types.js";
 import type { AttendanceStatus } from "../domain/types.js";
 
@@ -48,6 +48,19 @@ export class AttendanceRepository {
     return Array.isArray(rows) && rows.length > 0;
   }
 
+  async activePersonIds(clientId: number, personIds: number[], role: Role) {
+    if (personIds.length === 0) return [];
+    const parameters = Object.fromEntries(personIds.map((personId, index) => [`personId${index}`, personId]));
+    const placeholders = personIds.map((_, index) => `:personId${index}`).join(", ");
+    const [rows] = await this.database.query<RowDataPacket[]>(
+      `SELECT id FROM users
+       WHERE client_id = :clientId AND role = :role AND status = 'active'
+         AND id IN (${placeholders})`,
+      { clientId, role, ...parameters }
+    );
+    return rows.map((row) => Number(row.id));
+  }
+
   async create(input: {
     clientId: number;
     personId: number;
@@ -62,5 +75,38 @@ export class AttendanceRepository {
       { ...input, notes: input.notes ?? null }
     );
     return (result as { insertId: number }).insertId;
+  }
+
+  async createMany(input: {
+    clientId: number;
+    recordedByUserId: number;
+    attendanceDate: string;
+    records: Array<{ personId: number; status: AttendanceStatus; notes?: string }>;
+  }) {
+    const connection = await this.database.getConnection();
+    try {
+      await connection.beginTransaction();
+      for (const record of input.records) {
+        await connection.query(
+          `INSERT INTO attendance_records (client_id, person_id, recorded_by_user_id, attendance_date, status, notes)
+           VALUES (:clientId, :personId, :recordedByUserId, :attendanceDate, :status, :notes)`,
+          {
+            clientId: input.clientId,
+            recordedByUserId: input.recordedByUserId,
+            attendanceDate: input.attendanceDate,
+            personId: record.personId,
+            status: record.status,
+            notes: record.notes ?? null
+          }
+        );
+      }
+      await connection.commit();
+      return input.records.length;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }

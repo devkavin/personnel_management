@@ -8,7 +8,8 @@ export const attendanceModule = defineModule({
   routes: [{ path: "/api/attendance", router: attendanceRouter }],
   openApi: moduleOpenApi("Attendance", [
     { method: "get", path: "/attendance", operationId: "listAttendance", summary: "List tenant attendance" },
-    { method: "post", path: "/attendance", operationId: "recordAttendance", summary: "Record tenant attendance" }
+    { method: "post", path: "/attendance", operationId: "recordAttendance", summary: "Record tenant attendance" },
+    { method: "post", path: "/attendance/batch", operationId: "recordAttendanceBatch", summary: "Record an attendance roster transactionally" }
   ]),
   system: attendanceSystem
 });

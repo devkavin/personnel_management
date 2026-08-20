@@ -288,6 +288,61 @@ body {
   gap: 10px;
 }
 
+.field-error,
+[data-slot="field-error"] {
+  color: var(--danger);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.bulk-import-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bulk-import-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+}
+
+.bulk-import-summary span {
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+.bulk-import-summary strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-menu-button {
+  display: none;
+}
+
+.mobile-navigation-drawer {
+  width: min(88vw, 340px);
+}
+
+.mobile-navigation-drawer [data-slot="drawer-body"] {
+  min-height: 0;
+  padding: 0;
+}
+
+.mobile-sidebar {
+  width: 100%;
+  height: 100%;
+  position: static;
+  border: 0;
+  box-shadow: none;
+}
+
 .workspace-context {
   min-width: 0;
 }
@@ -536,7 +591,7 @@ body {
   justify-content: flex-end;
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .form-card,
@@ -581,17 +636,24 @@ body {
   height: 100%;
 }
 
-.form-card > [data-slot="card-content"] > [data-slot="alert-dialog-trigger"] {
+.form-card > [data-slot="card-content"] > button:last-child {
   width: 100%;
   display: flex;
   justify-content: flex-end;
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
-.form-card > [data-slot="card-content"] > [data-slot="alert-dialog-trigger"] > button,
-.form-actions [data-slot="alert-dialog-trigger"] > button {
+.system-picker-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.form-card > [data-slot="card-content"] > button:last-child,
+.form-actions > button {
   min-width: 148px;
 }
 
@@ -605,7 +667,7 @@ body {
   width: 100%;
 }
 
-.user-editor-actions [data-slot="alert-dialog-trigger"] > button {
+.user-editor-actions > button {
   min-width: 148px;
 }
 
@@ -618,7 +680,7 @@ body {
   display: grid;
   gap: 12px;
   padding: 16px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-secondary);
 }
@@ -678,10 +740,10 @@ body {
 }
 
 .app-select-popover {
-  z-index: 10000;
+  z-index: 100000;
   width: max(var(--trigger-width), 250px);
   max-width: calc(100vw - 24px);
-  max-height: min(360px, calc(100vh - 32px));
+  max-height: min(520px, calc(100dvh - 32px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -727,15 +789,15 @@ body {
 }
 
 .multi-select-popover {
-  z-index: 10000;
+  z-index: 100000;
   width: max(var(--trigger-width, 0px), 320px);
   max-width: calc(100vw - 24px);
-  max-height: min(420px, calc(100vh - 32px));
+  max-height: min(520px, calc(100dvh - 32px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--panel-strong);
   box-shadow: var(--shadow-md);
@@ -745,7 +807,7 @@ body {
   flex: 0 0 auto;
   width: 100%;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .multi-select-search [data-slot="search-field-group"] {
@@ -754,7 +816,7 @@ body {
 
 .multi-select-popover [data-slot="dropdown-menu"] {
   min-height: 0;
-  max-height: 280px;
+  max-height: min(380px, calc(100dvh - 160px));
   overflow-y: auto;
   padding-top: 6px;
 }
@@ -789,7 +851,7 @@ body {
 
 .app-select-options {
   min-height: 0;
-  max-height: 260px;
+  max-height: min(420px, calc(100dvh - 132px));
   overflow-y: auto;
   padding: 6px 0 0;
 }
@@ -992,6 +1054,21 @@ body {
   margin-inline-start: auto;
 }
 
+.mobile-table-label {
+  display: none;
+}
+
+.calendar-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 240px) minmax(220px, 300px) auto;
+  align-items: end;
+}
+
+.calendar-toolbar .field-stack {
+  width: 100%;
+  margin-inline-start: 0;
+}
+
 .section-heading p,
 .schedule-day [data-slot="card-header"] span,
 .schedule-session small {
@@ -999,14 +1076,154 @@ body {
 }
 
 .tree-row > [data-slot="card-content"] {
+  flex-direction: row;
+  align-items: flex-start;
+  text-align: left;
   padding: 12px 14px;
+}
+
+.tree-row {
+  margin-inline-start: calc(var(--tree-depth, 0) * 18px);
+  border-inline-start: 3px solid color-mix(in srgb, var(--blue) 24%, var(--line));
 }
 
 .tree-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
   min-width: 0;
+  flex: 1;
+  padding-top: 3px;
+}
+
+.tree-label > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--blue);
+}
+
+.tree-label .primary-cell {
+  min-width: 0;
+}
+
+.tree-label small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.setup-guide > [data-slot="card-content"],
+.member-regatta-strip > [data-slot="card-content"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.setup-guide > [data-slot="card-content"] > div,
+.member-regatta-strip > [data-slot="card-content"] > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.setup-guide span,
+.member-regatta-strip span,
+.member-regatta-strip small {
+  display: block;
+  color: var(--muted);
+}
+
+.setup-progress > [data-slot="card-content"] {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+}
+
+.setup-progress > [data-slot="card-content"] > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-inline-end: 1px solid var(--line);
+}
+
+.setup-progress > [data-slot="card-content"] > div:last-child {
+  border-inline-end: 0;
+}
+
+.setup-progress > [data-slot="card-content"] > div > span,
+.setup-section-label > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface-secondary);
+  font-weight: 750;
+}
+
+.setup-progress > [data-slot="card-content"] > div.ready > span {
+  color: var(--accent-soft-foreground);
+  background: var(--accent-soft);
+}
+
+.setup-progress strong,
+.setup-progress small,
+.setup-section-label strong,
+.setup-section-label small {
+  display: block;
+}
+
+.setup-progress small,
+.setup-section-label small {
+  color: var(--muted);
+}
+
+.setup-progress svg {
+  color: var(--green);
+}
+
+.setup-sections,
+.schedule-create-step {
+  display: grid;
+  gap: 22px;
+}
+
+.setup-sections > section {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-sections > section:last-child {
+  border-bottom: 0;
+}
+
+.setup-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.regatta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.member-regatta-strip .regatta-chips {
+  justify-content: flex-end;
+  margin-top: 0;
+}
+
+.member-regatta-strip [data-slot="chip-label"] small {
+  margin-inline-start: 6px;
 }
 
 .schedule-calendar-grid {
@@ -1097,15 +1314,33 @@ body {
 
 .schedule-editor-modal,
 .week-editor-modal,
-.regatta-editor-modal {
+.regatta-editor-modal,
+.app-modal,
+[data-slot="modal-dialog"] {
   width: min(960px, calc(100vw - 28px));
-  max-height: min(88vh, 900px);
+  max-height: min(92dvh, 900px);
+  overflow: visible;
 }
 
 .schedule-editor-modal [data-slot="modal-body"],
 .week-editor-modal [data-slot="modal-body"],
-.regatta-editor-modal [data-slot="modal-body"] {
+.regatta-editor-modal [data-slot="modal-body"],
+.app-modal [data-slot="modal-body"],
+[data-slot="modal-dialog"] [data-slot="modal-body"] {
+  min-height: 0;
+  max-height: calc(92dvh - 150px);
   overflow-y: auto;
+  overflow-x: visible;
+}
+
+[data-slot="modal-backdrop"] {
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.modal-form-stack {
+  display: grid;
+  gap: 16px;
 }
 
 .week-grid {
@@ -1139,6 +1374,245 @@ body {
   .member-dashboard-grid {
     grid-template-columns: 1fr;
   }
+
+  .calendar-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .setup-progress > [data-slot="card-content"] {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-progress > [data-slot="card-content"] > div {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .setup-progress > [data-slot="card-content"] > div:last-child {
+    border-bottom: 0;
+  }
+}
+
+.date-picker-field [data-slot="date-picker"],
+.date-picker-field [data-slot="date-picker-trigger"],
+.date-picker-field [data-slot="date-input-group"] {
+  width: 100%;
+}
+
+[data-slot="date-picker-popover"] {
+  z-index: 100000;
+}
+
+.attendance-workflow {
+  display: grid;
+  gap: 16px;
+}
+
+.attendance-controls-card,
+.attendance-roster-card,
+.attendance-summary-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.attendance-controls-card > [data-slot="card-content"] {
+  padding: 18px;
+}
+
+.attendance-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, .8fr) minmax(280px, 1fr) minmax(240px, .8fr);
+  gap: 18px;
+  align-items: end;
+}
+
+.attendance-audience-switch,
+.attendance-date-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.attendance-date-control {
+  grid-template-columns: minmax(190px, 1fr) auto;
+  align-items: end;
+}
+
+.attendance-date-control > button {
+  min-height: 40px;
+}
+
+.attendance-context-note {
+  min-height: 64px;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+}
+
+.attendance-context-note span,
+.attendance-roster-card p,
+.attendance-save-panel span {
+  color: var(--muted);
+  font-size: .84rem;
+}
+
+.attendance-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.attendance-summary-card > [data-slot="card-content"] {
+  min-height: 82px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 14px 16px;
+  border-inline-start: 3px solid var(--blue);
+}
+
+.attendance-summary-card span {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.attendance-summary-card strong {
+  color: var(--text);
+  font-size: 1.45rem;
+}
+
+.summary-present > [data-slot="card-content"] { border-inline-start-color: var(--green); }
+.summary-absent > [data-slot="card-content"] { border-inline-start-color: var(--danger); }
+.summary-late > [data-slot="card-content"] { border-inline-start-color: var(--amber); }
+.summary-excused > [data-slot="card-content"] { border-inline-start-color: var(--violet); }
+
+.attendance-roster-card > [data-slot="card-header"] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 12px;
+}
+
+.attendance-roster-card h3,
+.attendance-roster-card p {
+  margin: 0;
+}
+
+.attendance-roster-card > [data-slot="card-content"] {
+  display: grid;
+  gap: 14px;
+  padding: 8px 20px 20px;
+}
+
+.attendance-roster-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attendance-roster-toolbar > [data-slot="search-field"] {
+  width: min(100%, 420px);
+}
+
+.attendance-roster-list {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.attendance-roster-row {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.attendance-roster-row:last-child {
+  border-bottom: 0;
+}
+
+.attendance-roster-row.recorded {
+  background: var(--surface-secondary);
+  opacity: .78;
+}
+
+.attendance-status-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  gap: 4px;
+}
+
+.attendance-status-picker button.selected.status-present { background: var(--green); color: white; }
+.attendance-status-picker button.selected.status-absent { background: var(--danger); color: white; }
+.attendance-status-picker button.selected.status-late { background: var(--amber); color: white; }
+.attendance-status-picker button.selected.status-excused { background: var(--violet); color: white; }
+
+.attendance-save-panel {
+  position: sticky;
+  bottom: 12px;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-strong) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.attendance-save-panel > div:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.attendance-save-panel > button {
+  min-width: 180px;
+}
+
+.empty-state {
+  justify-items: center;
+  text-align: center;
+}
+
+.empty-state strong,
+.empty-state span {
+  display: block;
+}
+
+@media (max-width: 1100px) {
+  .attendance-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .attendance-summary-grid {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+
+  .attendance-roster-row {
+    grid-template-columns: auto minmax(160px, 1fr);
+  }
+
+  .attendance-status-picker,
+  .attendance-roster-row > [data-slot="chip"] {
+    grid-column: 2;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -1153,6 +1627,13 @@ body {
 }
 
 @media (max-width: 760px) {
+  .system-picker-row {
+    grid-template-columns: 1fr;
+  }
+
+  .system-picker-row > button {
+    width: 100%;
+  }
   .login-shell,
   .app-shell {
     grid-template-columns: 1fr;
@@ -1170,36 +1651,35 @@ body {
     padding: 10px 20px 22px;
   }
 
-  .sidebar {
-    width: 100%;
-    height: auto;
-    position: static;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 10px;
-    padding: 12px 14px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .sidebar.collapsed {
-    width: 100%;
-  }
-
-  .sidebar-nav {
-    grid-column: 1 / -1;
-    max-height: 60vh;
-    overflow-y: auto;
-  }
-
-  .sidebar.collapsed .sidebar-nav {
+  .desktop-sidebar {
     display: none;
   }
 
-  .sidebar > button:last-child {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
+  .mobile-menu-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .mobile-sidebar {
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 10px 4px 14px;
+    border: 0;
+  }
+
+  .mobile-sidebar .sidebar-nav {
+    grid-column: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .mobile-sidebar > button:last-child {
+    grid-column: auto;
+    grid-row: auto;
+    width: 100%;
   }
 
   .topbar {
@@ -1239,13 +1719,35 @@ body {
 
   .page-actions,
   .page-actions > button,
-  .page-actions > [data-slot="alert-dialog-trigger"] {
+  .page-actions > button {
     width: 100%;
   }
 
   .calendar-toolbar .field-stack {
     width: 100%;
     margin-inline-start: 0;
+  }
+
+  .calendar-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-guide > [data-slot="card-content"],
+  .member-regatta-strip > [data-slot="card-content"] {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .setup-guide button {
+    width: 100%;
+  }
+
+  .member-regatta-strip .regatta-chips {
+    justify-content: flex-start;
+  }
+
+  .tree-row {
+    margin-inline-start: calc(var(--tree-depth, 0) * 8px);
   }
 
   .table-toolbar > .field-stack {
@@ -1277,6 +1779,90 @@ body {
 
   .table-search-wrap {
     width: 100%;
+  }
+
+  .attendance-controls,
+  .attendance-save-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .bulk-import-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .attendance-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-roster-toolbar,
+  .attendance-roster-card > [data-slot="card-header"] {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .attendance-roster-toolbar > [data-slot="search-field"] {
+    width: 100%;
+  }
+
+  .attendance-roster-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .attendance-status-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attendance-save-panel {
+    bottom: 8px;
+  }
+
+  .attendance-save-panel > div:last-child {
+    justify-items: stretch;
+  }
+
+  .attendance-save-panel > button {
+    width: 100%;
+  }
+
+  .data-card [data-slot="table-header"] {
+    display: none;
+  }
+
+  .data-card [data-slot="table-row"] {
+    display: grid;
+    gap: 0;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+  }
+
+  .data-card [data-slot="table-cell"] {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(90px, .38fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--line);
+    white-space: normal;
+  }
+
+  .data-card [data-slot="table-cell"]:last-child {
+    border-bottom: 0;
+  }
+
+  .mobile-table-label {
+    display: block;
+    color: var(--muted);
+    font-size: .75rem;
+    font-weight: 700;
+  }
+
+  .pagination-bar [data-slot="pagination-content"] {
+    max-width: 100%;
+    overflow-x: auto;
   }
 }
 

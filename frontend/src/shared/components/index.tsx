@@ -1,8 +1,34 @@
-import { useMemo, useRef, useState, type Key, type ReactNode } from "react";
-import { AlertDialog, Autocomplete, Button, Card, Chip, Dropdown, Header, Label, ListBox, Pagination, SearchField, Spinner, Table, type Selection } from "@heroui/react";
-import { CalendarCheck, ChevronDown, LockKeyhole, Plus, Power, Save, Search, Trash2, UserPlus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Key, type ReactNode } from "react";
+import { Alert, AlertDialog, Autocomplete, Button, Calendar, Card, Chip, DateField, DatePicker, Dropdown, Header, Label, ListBox, Pagination, SearchField, Spinner, Table, type Selection } from "@heroui/react";
+import { parseDate } from "@internationalized/date";
+import { CalendarCheck, ChevronDown, ChevronsLeft, ChevronsRight, LockKeyhole, Plus, Power, Save, Search, Trash2, UserPlus, X } from "lucide-react";
 
 export interface SelectOption { disabled?: boolean; label: string; value: string; meta?: string; status?: string }
+
+export function AppDatePicker({ label, value, onChange, isDisabled = false }: { label: string; value: string; onChange: (value: string) => void; isDisabled?: boolean }) {
+  return (
+    <div className="field-stack date-picker-field">
+      <span className="field-label">{label}</span>
+      <DatePicker value={parseDate(value)} onChange={(next) => { if (next) onChange(next.toString()); }} isDisabled={isDisabled}>
+        <DatePicker.Trigger>
+          <DateField.Group fullWidth>
+            <DateField.Input>{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+            <DatePicker.TriggerIndicator />
+          </DateField.Group>
+        </DatePicker.Trigger>
+        <DatePicker.Popover>
+          <Calendar>
+            <Calendar.Header><Calendar.NavButton slot="previous" /><Calendar.Heading /><Calendar.NavButton slot="next" /></Calendar.Header>
+            <Calendar.Grid>
+              <Calendar.GridHeader>{(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}</Calendar.GridHeader>
+              <Calendar.GridBody>{(date) => <Calendar.Cell date={date} />}</Calendar.GridBody>
+            </Calendar.Grid>
+          </Calendar>
+        </DatePicker.Popover>
+      </DatePicker>
+    </div>
+  );
+}
 
 export function SearchableSelect({ label, value, options, placeholder = "Select", disabled, clearable = false, onChange }: { label?: string; value: string; options: SelectOption[]; placeholder?: string; disabled?: boolean; clearable?: boolean; onChange: (value: string) => void }) {
   const selected = options.find((option) => option.value === value);
@@ -92,6 +118,7 @@ export function DataTable<T>({ rows, columns, rowKey, searchText, empty = "No re
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pages);
   const visible = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageNumbers = Array.from({ length: Math.min(5, pages) }, (_, index) => Math.min(Math.max(1, safePage - 2), Math.max(1, pages - 4)) + index);
   const applySearch = () => { setQuery(input.trim()); setPage(1); };
 
   return (
@@ -114,7 +141,7 @@ export function DataTable<T>({ rows, columns, rowKey, searchText, empty = "No re
           <Table.ScrollContainer>
             <Table.Content>
               <Table.Header>{columns.map((column, index) => <Table.Column key={column.header} isRowHeader={index === 0}>{column.header}</Table.Column>)}</Table.Header>
-              <Table.Body>{visible.map((row) => <Table.Row id={String(rowKey(row))} key={rowKey(row)}>{columns.map((column) => <Table.Cell key={column.header}>{column.render(row)}</Table.Cell>)}</Table.Row>)}</Table.Body>
+              <Table.Body>{visible.map((row) => <Table.Row id={String(rowKey(row))} key={rowKey(row)}>{columns.map((column) => <Table.Cell key={column.header}><span className="mobile-table-label">{column.header}</span>{column.render(row)}</Table.Cell>)}</Table.Row>)}</Table.Body>
             </Table.Content>
           </Table.ScrollContainer>
         </Table>
@@ -122,9 +149,11 @@ export function DataTable<T>({ rows, columns, rowKey, searchText, empty = "No re
         <Pagination className="pagination-bar" size="sm" aria-label="Pagination">
           <Pagination.Summary>{filtered.length ? `${(safePage - 1) * pageSize + 1}-${Math.min(safePage * pageSize, filtered.length)} of ${filtered.length}` : "0 records"}</Pagination.Summary>
           <Pagination.Content>
+            <Pagination.Item><Button isIconOnly size="sm" variant="ghost" aria-label="First page" isDisabled={safePage === 1} onPress={() => setPage(1)}><ChevronsLeft size={15} /></Button></Pagination.Item>
             <Pagination.Item><Pagination.Previous type="button" isDisabled={safePage === 1} onPress={() => setPage((value) => Math.max(1, value - 1))}>Previous</Pagination.Previous></Pagination.Item>
-            <Pagination.Item><Pagination.Link isActive type="button">{safePage} / {pages}</Pagination.Link></Pagination.Item>
+            {pageNumbers.map((pageNumber) => <Pagination.Item key={pageNumber}><Pagination.Link isActive={pageNumber === safePage} type="button" onPress={() => setPage(pageNumber)}>{pageNumber}</Pagination.Link></Pagination.Item>)}
             <Pagination.Item><Pagination.Next type="button" isDisabled={safePage === pages} onPress={() => setPage((value) => Math.min(pages, value + 1))}>Next</Pagination.Next></Pagination.Item>
+            <Pagination.Item><Button isIconOnly size="sm" variant="ghost" aria-label="Last page" isDisabled={safePage === pages} onPress={() => setPage(pages)}><ChevronsRight size={15} /></Button></Pagination.Item>
           </Pagination.Content>
         </Pagination>
       </Card.Content>
@@ -154,7 +183,8 @@ function pendingLabel(label: string) {
 
 type ActionVariant = "primary" | "secondary" | "tertiary" | "outline" | "ghost" | "danger" | "danger-soft";
 
-export function ConfirmAction({ label, title, description, danger = false, disabled, icon, variant, onConfirm }: { label: string; title: string; description: string; danger?: boolean; disabled?: boolean; icon?: ReactNode; variant?: ActionVariant; onConfirm: () => void | Promise<void> }) {
+export function ConfirmAction({ label, title, description, danger = false, disabled, icon, variant, validate, onConfirm }: { label: string; title: string; description: string; danger?: boolean; disabled?: boolean; icon?: ReactNode; variant?: ActionVariant; validate?: () => boolean; onConfirm: () => void | Promise<void> }) {
+  const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState("");
   const submissionLock = useRef(false);
@@ -178,8 +208,9 @@ export function ConfirmAction({ label, title, description, danger = false, disab
   }
 
   return (
-    <AlertDialog>
-      <AlertDialog.Trigger><Button type="button" size="sm" variant={resolvedVariant} isDisabled={disabled || isSaving}>{resolvedIcon}{label}</Button></AlertDialog.Trigger>
+    <>
+      <Button type="button" size="sm" variant={resolvedVariant} isDisabled={disabled || isSaving} onPress={() => { if (!validate || validate()) setIsOpen(true); }}>{resolvedIcon}{label}</Button>
+      <AlertDialog isOpen={isOpen} onOpenChange={setIsOpen}>
       <AlertDialog.Backdrop>
         <AlertDialog.Container placement="center">
           <AlertDialog.Dialog>
@@ -191,7 +222,8 @@ export function ConfirmAction({ label, title, description, danger = false, disab
           </AlertDialog.Dialog>
         </AlertDialog.Container>
       </AlertDialog.Backdrop>
-    </AlertDialog>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -200,4 +232,10 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 }
 
 export function LoadingState() { return <Card className="state-card"><Card.Content><Spinner /><span>Loading data</span></Card.Content></Card>; }
-export function Notice({ message, tone = "accent" }: { message: string; tone?: "accent" | "danger" | "success" | "warning" }) { return <Chip color={tone} variant="soft">{message}</Chip>; }
+export function Notice({ message, tone = "accent" }: { message: string; tone?: "accent" | "danger" | "success" | "warning" }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => setVisible(true), [message]);
+  if (!visible) return null;
+  const status = tone === "accent" ? "accent" : tone;
+  return <Alert className="app-notice" status={status}><Alert.Indicator /><Alert.Content><Alert.Description>{message}</Alert.Description></Alert.Content><Button isIconOnly size="sm" variant="ghost" aria-label="Dismiss message" onPress={() => setVisible(false)}><X size={15} /></Button></Alert>;
+}

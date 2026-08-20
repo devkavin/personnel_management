@@ -2,7 +2,7 @@ import type { AuthUser } from "../../../shared/types.js";
 import { AppError } from "../../../shared/http.js";
 import { requireTenantScope } from "../../../shared/policies.js";
 import { audienceRole, audienceSetting } from "../domain/types.js";
-import type { AttendanceQuery, CreateAttendanceInput } from "../http/schemas.js";
+import type { AttendanceQuery, CreateAttendanceBatchInput, CreateAttendanceInput } from "../http/schemas.js";
 import { AttendanceRepository } from "../infrastructure/repository.js";
 
 export class AttendanceService {
@@ -44,6 +44,31 @@ export class AttendanceService {
     } catch (error) {
       if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
         throw new AppError(409, "Attendance has already been recorded for this person and date");
+      }
+      throw error;
+    }
+  }
+
+  async createBatch(user: AuthUser, input: CreateAttendanceBatchInput) {
+    const clientId = requireTenantScope(user, input.clientId);
+    await this.assertAudienceEnabled(clientId, input.audience);
+    const personIds = input.records.map((record) => record.personId);
+    if (new Set(personIds).size !== personIds.length) throw new AppError(422, "Each person may only appear once in an attendance batch");
+
+    const activePersonIds = new Set(await this.repository.activePersonIds(clientId, personIds, audienceRole(input.audience)));
+    const unavailable = personIds.filter((personId) => !activePersonIds.has(personId));
+    if (unavailable.length) throw new AppError(422, "One or more selected people are unavailable for this attendance audience");
+
+    try {
+      return await this.repository.createMany({
+        clientId,
+        recordedByUserId: user.id,
+        attendanceDate: input.attendanceDate,
+        records: input.records
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
+        throw new AppError(409, "Attendance has already been recorded for one or more selected people on this date");
       }
       throw error;
     }

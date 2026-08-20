@@ -1,4 +1,4 @@
-import { CalendarDays, ListTree, SquarePlus } from "lucide-react";
+import { CalendarDays, Flag, ListTree, SquarePlus } from "lucide-react";
 import type { FeatureManifest } from "../../app/feature-types";
 
 const manifest: FeatureManifest = {
@@ -7,6 +7,7 @@ const manifest: FeatureManifest = {
   routes: [
     { path: "/schedule/calendar", view: "schedule-calendar" },
     { path: "/schedule/add", view: "schedule-add" },
+    { path: "/schedule/regattas", view: "schedule-regattas" },
     { path: "/schedule/setup", view: "schedule-setup" },
     { path: "/my-schedule", view: "my-schedule" }
   ],
@@ -17,6 +18,7 @@ const manifest: FeatureManifest = {
       : [
           { view: "schedule-calendar", label: "Calendar", icon: <CalendarDays size={19} /> },
           { view: "schedule-add", label: "Add schedule", icon: <SquarePlus size={19} /> },
+          { view: "schedule-regattas", label: "Regattas", icon: <Flag size={19} /> },
           { view: "schedule-setup", label: "Schedule setup", icon: <ListTree size={19} /> }
         ];
     return [{ label: "Schedule", icon: <CalendarDays size={19} />, children }];

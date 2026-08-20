@@ -10,7 +10,12 @@ export const statusOptions = ["present", "absent", "late", "excused"].map((value
   label: value[0].toUpperCase() + value.slice(1)
 }));
 export const boolValue = (value: unknown) => value === true || value === 1 || value === "1" || value === "true";
-export const today = () => new Date().toISOString().slice(0, 10);
+export const today = (timezone?: string) => {
+  if (!timezone) return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
 export const messageOf = (error: unknown) => error instanceof Error ? error.message : "Request failed";
 
 const supportedTimezones = (Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] }).supportedValuesOf?.("timeZone") ?? ["Asia/Colombo", "UTC"];

@@ -1,10 +1,12 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, lazy, ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Avatar,
+  AlertDialog,
   Button,
   Card,
   Chip,
+  Drawer,
   Input,
   Popover,
   Separator,
@@ -17,13 +19,14 @@ import {
   ChevronDown,
   LogIn,
   LogOut,
+  Menu,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
   Sun,
   UserRound,
-  UserPlus,
+  X,
   UsersRound
 } from "lucide-react";
 import {
@@ -38,32 +41,28 @@ import {
 import { api, type AuthUser, type DashboardResponse, type Role, type Tenant, type TenantFeature } from "./shared/api/client";
 import { allowedViews, navigationFor, pathForView, viewForPath } from "./app/features";
 import type { NavigationItem, ViewKey } from "./app/feature-types";
-import { AttendancePage } from "./features/attendance";
-import { DashboardDetails } from "./features/dashboard";
-import { PeoplePage } from "./features/people";
-import { ProfilePage } from "./features/profile";
-import { SystemsPage } from "./features/systems";
-import { TenantsPage } from "./features/tenants";
-import { MemberDashboard, SchedulingPage } from "./features/scheduling";
+import { hasUnsavedChanges } from "./shared/hooks/useUnsavedChanges";
+import {
+  AUTH_EXPIRED_EVENT,
+  clearSession,
+  isTokenExpired,
+  readSession,
+  SESSION_KEY,
+  tokenExpiresAt,
+  writeSession,
+  type Session
+} from "./shared/auth/session";
 
-const SESSION_KEY = "personnel_management_frontend_session";
+const AttendancePage = lazy(() => import("./features/attendance").then((module) => ({ default: module.AttendancePage })));
+const DashboardDetails = lazy(() => import("./features/dashboard").then((module) => ({ default: module.DashboardDetails })));
+const PeoplePage = lazy(() => import("./features/people").then((module) => ({ default: module.PeoplePage })));
+const ProfilePage = lazy(() => import("./features/profile").then((module) => ({ default: module.ProfilePage })));
+const SystemsPage = lazy(() => import("./features/systems").then((module) => ({ default: module.SystemsPage })));
+const TenantsPage = lazy(() => import("./features/tenants").then((module) => ({ default: module.TenantsPage })));
+const MemberDashboard = lazy(() => import("./features/scheduling").then((module) => ({ default: module.MemberDashboard })));
+const SchedulingPage = lazy(() => import("./features/scheduling").then((module) => ({ default: module.SchedulingPage })));
+
 type ThemeMode = "light" | "dark";
-
-interface Session {
-  token: string;
-  user: AuthUser;
-}
-
-function readSession() {
-  const value = localStorage.getItem(SESSION_KEY);
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as Session;
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
-}
 
 function roleLabel(role: Role) {
   if (role === "super_admin") return "Super Admin";
@@ -196,12 +195,9 @@ function StatCard({ label, value, icon, tone = "blue" }: { label: string; value:
   );
 }
 
-function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+function LoginPage({ onLogin, notice }: { onLogin: (session: Session) => void; notice?: string }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [clientSlug, setClientSlug] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const submitLock = useRef(false);
@@ -214,14 +210,8 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
     setIsLoading(true);
 
     try {
-      if (mode === "register") {
-        await api.register({ clientSlug, displayName, email, password });
-        setMode("login");
-        setError("Registration complete. You can now sign in.");
-        return;
-      }
       const session = await api.login(email, password);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      writeSession(session);
       onLogin(session);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Login failed");
@@ -239,18 +229,15 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
             <div className="brand-mark"><CalendarCheck size={24} /></div>
             <div>
               <span>Personnel Management</span>
-              <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
-              <p>{mode === "login" ? "Sign in to continue to your workspace." : "Register with the details provided by your organization."}</p>
+              <h1>Welcome back</h1>
+              <p>Sign in with your email address or the ID provided by your organization.</p>
             </div>
           </div>
         </Card.Header>
         <Card.Content>
           <form className="login-form" onSubmit={handleSubmit}>
+            {notice ? <Chip color="warning" variant="soft">{notice}</Chip> : null}
             {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
-            {mode === "register" ? <>
-              <label className="field-stack"><FieldLabel>Tenant slug</FieldLabel><Input value={clientSlug} onChange={(event) => setClientSlug(event.target.value)} required /></label>
-              <label className="field-stack"><FieldLabel>Display name</FieldLabel><Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></label>
-            </> : null}
             <label className="field-stack">
               <FieldLabel>Email or User ID</FieldLabel>
               <Input value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required />
@@ -266,11 +253,8 @@ function LoginPage({ onLogin }: { onLogin: (session: Session) => void }) {
               />
             </label>
             <Button variant="primary" type="submit" isDisabled={isLoading}>
-              {isLoading ? <Spinner size="sm" /> : mode === "login" ? <LogIn size={17} /> : <UserPlus size={17} />}
-              {isLoading ? (mode === "login" ? "Signing in..." : "Registering...") : mode === "login" ? "Sign in" : "Register"}
-            </Button>
-            <Button variant="ghost" type="button" onPress={() => { setError(""); setMode((value) => value === "login" ? "register" : "login"); }}>
-              {mode === "login" ? "Create member account" : "Back to sign in"}
+              {isLoading ? <Spinner size="sm" /> : <LogIn size={17} />}
+              {isLoading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
         </Card.Content>
@@ -295,7 +279,7 @@ function OnboardingPage({ session, onComplete }: { session: Session; onComplete:
     setIsSaving(true);
     try {
       const nextSession = await api.completeOnboarding(session.token, { displayName, email, password });
-      localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
+      writeSession(nextSession);
       onComplete(nextSession);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to complete setup");
@@ -346,7 +330,8 @@ function Sidebar({
   role,
   view,
   onNavigate,
-  onToggle
+  onToggle,
+  mobile = false
 }: {
   collapsed: boolean;
   features: TenantFeature[];
@@ -354,6 +339,7 @@ function Sidebar({
   view: ViewKey;
   onNavigate: (view: ViewKey) => void;
   onToggle: () => void;
+  mobile?: boolean;
 }) {
   const items = navigationFor({ role, systems: features });
   const activeGroup = items.find((item) => item.children?.some((child) => child.view === view))?.label;
@@ -385,7 +371,7 @@ function Sidebar({
   }
 
   return (
-    <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+    <aside className={`sidebar ${mobile ? "mobile-sidebar" : "desktop-sidebar"} ${collapsed ? "collapsed" : ""}`}>
       <div className="sidebar-brand">
         <div className="brand-mark small"><CalendarCheck size={20} /></div>
         {!collapsed ? <strong>Personnel</strong> : null}
@@ -393,9 +379,9 @@ function Sidebar({
       <div className="sidebar-nav">
         {items.map(navigationItem)}
       </div>
-      <Button variant="secondary" isIconOnly={collapsed} onPress={onToggle}>
-        {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-        {!collapsed ? <span>Collapse</span> : null}
+      <Button variant="secondary" isIconOnly={collapsed && !mobile} onPress={onToggle}>
+        {mobile ? <X size={18} /> : collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        {!collapsed ? <span>{mobile ? "Close navigation" : "Collapse"}</span> : null}
       </Button>
     </aside>
   );
@@ -406,13 +392,15 @@ function Topbar({
   tenant,
   theme,
   onLogout,
-  onThemeChange
+  onThemeChange,
+  onOpenNavigation
 }: {
   session: Session;
   tenant: Tenant | null;
   theme: ThemeMode;
   onLogout: () => void;
   onThemeChange: (theme: ThemeMode) => void;
+  onOpenNavigation: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -426,6 +414,7 @@ function Topbar({
 
   return (
     <header className="topbar">
+      <Button className="mobile-menu-button" isIconOnly variant="ghost" aria-label="Open navigation" onPress={onOpenNavigation}><Menu size={20} /></Button>
       <div className="workspace-context">
         <span>{tenant?.name ?? "Personnel Management"}</span>
         <h1>{roleLabel(session.user.role)} workspace</h1>
@@ -499,6 +488,7 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const view = viewForPath(location.pathname);
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -507,8 +497,15 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
   const [reloadKey, setReloadKey] = useState(0);
   const [theme, setTheme] = useState<ThemeMode>(() => (localStorage.getItem("personnel-management-theme") === "dark" ? "dark" : "light"));
   const [error, setError] = useState("");
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const pendingAction = useRef<(() => void) | null>(null);
 
-  const navigateToView = useCallback((next: ViewKey) => navigate(pathForView(next)), [navigate]);
+  const requestAction = useCallback((action: () => void) => {
+    if (!hasUnsavedChanges()) { action(); return; }
+    pendingAction.current = action;
+    setDiscardOpen(true);
+  }, []);
+  const navigateToView = useCallback((next: ViewKey) => requestAction(() => { navigate(pathForView(next)); setMobileNavigationOpen(false); }), [navigate, requestAction]);
 
   useEffect(() => {
     if (location.pathname === "/") navigate("/dashboard", { replace: true });
@@ -522,7 +519,7 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
   useEffect(() => {
     api.me(session.token).then(({ user }) => {
       const next = { token: session.token, user };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      writeSession(next);
       onSession(next);
     }).catch(() => undefined);
   }, [onSession, session.token]);
@@ -562,34 +559,102 @@ function Workspace({ session, onLogout, onSession }: { session: Session; onLogou
     if (view === "systems" && session.user.role === "super_admin") return <SystemsPage token={session.token} />;
     if (tenant && view === "schedule-calendar") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="calendar" />;
     if (tenant && view === "schedule-add") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="add" />;
+    if (tenant && view === "schedule-regattas") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="regattas" />;
     if (tenant && view === "schedule-setup") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="setup" />;
     if (tenant && view === "my-schedule") return <SchedulingPage token={session.token} tenant={tenant} role={session.user.role} timezone={session.user.timezone} section="my" />;
-    return <ProfilePage session={session} tenant={tenant} onSession={(next) => { localStorage.setItem(SESSION_KEY, JSON.stringify(next)); onSession(next); }} />;
+    return <ProfilePage session={session} tenant={tenant} onSession={(next) => { writeSession(next); onSession(next); }} />;
   }, [dashboard, features, navigateToView, onSession, session, tenant, view]);
 
   return (
     <main className="app-shell">
       <Sidebar collapsed={collapsed} features={features} role={session.user.role} view={view} onNavigate={navigateToView} onToggle={() => setCollapsed((current) => !current)} />
+      <Drawer isOpen={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
+        <Drawer.Backdrop isDismissable>
+          <Drawer.Content placement="left" className="mobile-navigation-drawer">
+            <Drawer.Dialog>
+              <Drawer.Header><Drawer.Heading>Navigation</Drawer.Heading><Drawer.CloseTrigger /></Drawer.Header>
+              <Drawer.Body><Sidebar mobile collapsed={false} features={features} role={session.user.role} view={view} onNavigate={navigateToView} onToggle={() => setMobileNavigationOpen(false)} /></Drawer.Body>
+            </Drawer.Dialog>
+          </Drawer.Content>
+        </Drawer.Backdrop>
+      </Drawer>
       <section className="workspace">
-        <Topbar session={session} tenant={tenant} theme={theme} onThemeChange={setTheme} onLogout={onLogout} />
+        <Topbar session={session} tenant={tenant} theme={theme} onThemeChange={setTheme} onLogout={() => requestAction(onLogout)} onOpenNavigation={() => setMobileNavigationOpen(true)} />
         <div className="workspace-content">
           {error ? <Chip color="danger" variant="soft">{error}</Chip> : null}
-          {page}
+          <Suspense fallback={<Card className="state-card"><Card.Content><Spinner /><span>Loading workspace</span></Card.Content></Card>}>{page}</Suspense>
         </div>
       </section>
+      <AlertDialog isOpen={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container placement="center">
+            <AlertDialog.Dialog>
+              {({ close }: { close: () => void }) => <><AlertDialog.Header><AlertDialog.Heading>Discard unsaved changes?</AlertDialog.Heading></AlertDialog.Header><AlertDialog.Body><p>You have changes that have not been saved. Continuing will discard them.</p></AlertDialog.Body><AlertDialog.Footer><Button variant="ghost" onPress={close}>Keep editing</Button><Button variant="danger" onPress={() => { const action = pendingAction.current; pendingAction.current = null; close(); action?.(); }}>Discard and continue</Button></AlertDialog.Footer></>}
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </main>
   );
 }
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => readSession());
+  const [authNotice, setAuthNotice] = useState("");
 
-  function handleLogout() {
-    localStorage.removeItem(SESSION_KEY);
+  const handleLogout = useCallback(() => {
+    clearSession();
+    setAuthNotice("");
     setSession(null);
-  }
+  }, []);
 
-  if (!session) return <LoginPage onLogin={setSession} />;
+  const handleExpiredSession = useCallback(() => {
+    clearSession();
+    setAuthNotice("Your session expired. Sign in again to continue.");
+    setSession(null);
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const expiresAt = tokenExpiresAt(session.token);
+    if (expiresAt === null || expiresAt <= Date.now()) {
+      handleExpiredSession();
+      return;
+    }
+
+    let timeout: number;
+    const scheduleExpiryCheck = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        handleExpiredSession();
+        return;
+      }
+      timeout = window.setTimeout(scheduleExpiryCheck, Math.min(remaining, 2_147_483_647));
+    };
+    scheduleExpiryCheck();
+    const verifyActiveSession = () => {
+      if (document.visibilityState === "visible" && isTokenExpired(session.token)) handleExpiredSession();
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === SESSION_KEY && event.newValue === null) {
+        setAuthNotice("You were signed out in another tab.");
+        setSession(null);
+      }
+    };
+
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", verifyActiveSession);
+    return () => {
+      if (timeout) window.clearTimeout(timeout);
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpiredSession);
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", verifyActiveSession);
+    };
+  }, [handleExpiredSession, session]);
+
+  if (!session) return <LoginPage notice={authNotice} onLogin={(next) => { setAuthNotice(""); setSession(next); }} />;
   if (session.user.requiresOnboarding) return <OnboardingPage session={session} onComplete={setSession} />;
 
   return <Workspace session={session} onLogout={handleLogout} onSession={setSession} />;

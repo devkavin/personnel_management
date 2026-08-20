@@ -1,3 +1,5 @@
+import { notifyAuthenticationExpired } from "../auth/session";
+
 export type Role = "super_admin" | "tenant_admin" | "tenant_staff" | "tenant_member";
 export type AttendanceStatus = "present" | "absent" | "late" | "excused";
 export type AttendanceAudience = "staff" | "member";
@@ -74,8 +76,9 @@ export interface ScheduleSessionTemplate { id: number; name: string; taxonomyNod
 export interface ScheduleWeekEntry { weekday: number; slotId: number; sessionTemplateId: number }
 export interface ScheduleWeekTemplate { id: number; name: string; description: string | null; ownerName: string; status: ScheduleResourceStatus; entries: ScheduleWeekEntry[] | string | null }
 export interface Regatta { regattaId: number; regattaName: string; startDate: string; endDate: string; createdBy: number; createdDate: string; modifiedBy: number; modifiedDate: string }
+export interface ScheduleRegattaSummary { id: number; name: string; startDate: string; endDate: string }
 export interface ScheduleSnapshot { id: number; name: string; durationMinutes: number | null; objective: string | null; instructions: string | null; intensity: string | null; location: string | null; equipment: string | null; staffNotes?: string | null }
-export interface ScheduleOccurrence { id: number; planId: number; planName: string; scheduleDate: string; slotId: number; slotName: string; sessionSnapshot: ScheduleSnapshot | string; taxonomyPath: string[] | string; status: "draft" | "published" | "cancelled" }
+export interface ScheduleOccurrence { id: number; planId: number; planName: string; scheduleDate: string; slotId: number; slotName: string; sessionSnapshot: ScheduleSnapshot | string; taxonomyPath: string[] | string; regattas: ScheduleRegattaSummary[] | string; status: "draft" | "published" | "cancelled" }
 export interface SchedulePlan { id: number; name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; status: "draft" | "published" | "cancelled"; ownerName: string; occurrenceCount: number; publishedAt: string | null; groupIds: number[] | string; memberIds: number[] | string; regattaIds: number[] | string }
 export interface ScheduleConflict { assignmentId: number; memberId: number; memberName: string; scheduleDate: string; slotId: number; slotName: string; existingSessionName: string }
 export interface MyScheduleAssignment extends Omit<ScheduleOccurrence, "id" | "status"> { id: number; slotStartTime?: string | null; status: "active" | "replaced" | "cancelled" }
@@ -90,6 +93,7 @@ async function request<T>(path: string, options: RequestInit = {}) {
   });
   const data = (await response.json().catch(() => null)) as T | { error?: { message?: string } } | null;
   if (!response.ok) {
+    if (response.status === 401 && new Headers(options.headers).has("Authorization")) notifyAuthenticationExpired();
     const message = typeof data === "object" && data !== null && "error" in data ? data.error?.message : "Request failed";
     throw new Error(message ?? "Request failed");
   }
@@ -139,6 +143,7 @@ export const api = {
     return get<{ records: AttendanceRecord[] }>(`/attendance${params.size ? `?${params}` : ""}`, token);
   },
   createAttendance(token: string, payload: { personId: number; audience: AttendanceAudience; attendanceDate: string; status: AttendanceStatus; notes?: string }) { return request<{ id: number; message: string }>("/attendance", json("POST", token, payload)); },
+  createAttendanceBatch(token: string, payload: { audience: AttendanceAudience; attendanceDate: string; records: Array<{ personId: number; status: AttendanceStatus; notes?: string }> }) { return request<{ count: number; message: string }>("/attendance/batch", json("POST", token, payload)); },
 
   scheduleTaxonomy(token: string) { return get<{ nodes: ScheduleTaxonomyNode[] }>("/scheduling/taxonomy", token); },
   createScheduleTaxonomy(token: string, payload: Omit<ScheduleTaxonomyNode, "id">) { return request<{ id: number }>("/scheduling/taxonomy", json("POST", token, payload)); },
@@ -172,14 +177,14 @@ export const api = {
   createRegatta(token: string, payload: { regattaName: string; startDate: string; endDate: string }) { return request<{ regattaId: number }>("/scheduling/regattas", json("POST", token, payload)); },
   updateRegattaEndDate(token: string, id: number, endDate: string) { return request<{ message: string }>(`/scheduling/regattas/${id}/end-date`, json("PATCH", token, { endDate })); },
   schedulePlans(token: string, fromDate: string, toDate: string) { return get<{ plans: SchedulePlan[] }>(`/scheduling/plans?fromDate=${fromDate}&toDate=${toDate}`, token); },
-  scheduleCalendar(token: string, fromDate: string, toDate: string) { return get<{ occurrences: ScheduleOccurrence[] }>(`/scheduling/calendar?fromDate=${fromDate}&toDate=${toDate}`, token); },
+  scheduleCalendar(token: string, fromDate: string, toDate: string, regattaId?: number) { return get<{ occurrences: ScheduleOccurrence[] }>(`/scheduling/calendar?fromDate=${fromDate}&toDate=${toDate}${regattaId ? `&regattaId=${regattaId}` : ""}`, token); },
   createSchedulePlan(token: string, payload: { name: string; mode: "day" | "week" | "range"; startDate: string; endDate: string; weekTemplateId?: number | null; entries: ScheduleWeekEntry[]; groupIds: number[]; memberIds: number[]; regattaIds: number[] }) { return request<{ id: number; occurrenceCount: number }>("/scheduling/plans", json("POST", token, payload)); },
   updateSchedulePlan(token: string, id: number, payload: Partial<{ name: string; startDate: string; endDate: string; groupIds: number[]; memberIds: number[]; regattaIds: number[] }>) { return request<{ message: string }>(`/scheduling/plans/${id}`, json("PATCH", token, payload)); },
   deleteSchedulePlan(token: string, id: number) { return request<void>(`/scheduling/plans/${id}`, json("DELETE", token)); },
   scheduleConflicts(token: string, id: number) { return get<{ conflicts: ScheduleConflict[] }>(`/scheduling/plans/${id}/conflicts`, token); },
   publishSchedule(token: string, id: number, replaceAssignmentIds: number[]) { return request<{ message: string; assignmentCount: number }>(`/scheduling/plans/${id}/publish`, json("POST", token, { replaceAssignmentIds })); },
   cancelScheduleAssignment(token: string, id: number) { return request<{ message: string }>(`/scheduling/assignments/${id}/cancel`, json("POST", token)); },
-  mySchedule(token: string, fromDate: string, toDate: string) { return get<{ assignments: MyScheduleAssignment[] }>(`/scheduling/my?fromDate=${fromDate}&toDate=${toDate}`, token); },
+  mySchedule(token: string, fromDate: string, toDate: string, regattaId?: number) { return get<{ assignments: MyScheduleAssignment[] }>(`/scheduling/my?fromDate=${fromDate}&toDate=${toDate}${regattaId ? `&regattaId=${regattaId}` : ""}`, token); },
   myScheduleDetail(token: string, id: number) { return get<{ assignment: MyScheduleAssignment }>(`/scheduling/my/${id}`, token); },
 
   profile(token: string) { return get<{ user: AuthUser }>("/profile", token); },
